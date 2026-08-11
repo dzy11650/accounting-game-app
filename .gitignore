@@ -1,0 +1,32 @@
+node_modules/
+dist/
+release/
+release_new/
+release_p/
+release2/
+release3/
+
+# Capacitor / Android 构建产物
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/**/*.iml
+*.apk
+*.aab
+
+# Capacitor 拷贝生成的 web 资源（由 cap sync 重新生成）
+android/app/src/main/assets/
+
+# 根目录临时构建脚本与日志
+*.ps1
+*.log
+install.err
+run_err.log
+run_out.log
+build_tauri.log
+tauri_build.log
+install_cli.log
+
+# 杂项
+$null

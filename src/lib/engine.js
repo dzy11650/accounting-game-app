@@ -1,0 +1,355 @@
+// 经营沙盒引擎（内核）：科目余额 + 凭证 + 随机数值 + 难度容错 + 纠错调整 + 报表
+// 贴近真实会计：借款次月起每月计提利息；固定资产按月折旧；权责发生制
+
+import { getCompany } from '../data/companies.js'
+
+const INITIAL_BALANCES = () => ({
+  银行存款: 0, 库存现金: 0, 应收账款: 0, 应付账款: 0, 原材料: 0, 库存商品: 0,
+  生产成本: 0, 固定资产: 0, 累计折旧: 0, 累计摊销: 0, 无形资产: 0, 研发支出: 0,
+  预付账款: 0, 短期借款: 0, 应付职工薪酬: 0, 应付利息: 0, 应交税费: 0,
+  实收资本: 0, 股本: 0, 本年利润: 0, 主营业务收入: 0, 主营业务成本: 0,
+  管理费用: 0, 财务费用: 0, 研发费用: 0, 所得税费用: 0,
+})
+
+// 科目性质：true = 借增贷减；false = 贷增借减
+const NATURE = {
+  银行存款: true, 库存现金: true, 应收账款: true, 原材料: true, 库存商品: true,
+  生产成本: true, 固定资产: true, 无形资产: true, 研发支出: true, 预付账款: true,
+  主营业务成本: true, 管理费用: true, 财务费用: true, 研发费用: true, 所得税费用: true,
+  短期借款: false, 应付账款: false, 应付职工薪酬: false, 应付利息: false, 应交税费: false,
+  实收资本: false, 股本: false, 本年利润: false, 累计折旧: false, 累计摊销: false, 主营业务收入: false,
+}
+function natureOf(account) {
+  if (NATURE[account] !== undefined) return NATURE[account]
+  const parent = account.split('-')[0]
+  return NATURE[parent] !== undefined ? NATURE[parent] : true
+}
+function bump(balances, account, side, amount) {
+  const isDebitNormal = natureOf(account)
+  let delta = amount
+  if (side === 'credit') delta = -delta
+  if (!isDebitNormal) delta = -delta
+  balances[account] = (balances[account] || 0) + delta
+}
+
+// ---------- 难度配置 ----------
+export const DIFFICULTY = {
+  easy: { id: 'easy', name: '简单模式', lives: 3, autoFix: true, randFund: false, selfEntry: false,
+    hint: '系统给出分录，错了自动修正，容错 3 次' },
+  hard: { id: 'hard', name: '困难模式', lives: 1, autoFix: false, randFund: true, selfEntry: true,
+    hint: '自己写分录，金额随机，错 1 次扣容错，必须做调整分录' },
+  hardcore: { id: 'hardcore', name: '硬核模式', lives: 0, autoFix: false, randFund: true, selfEntry: true,
+    hint: '错 1 次即失败，学不到最终关' },
+}
+
+// ---------- 税务规则 ----------
+export const TAX = {
+  VAT_SMALL: 0.03,     // 小规模纳税人征收率
+  VAT_GENERAL: 0.13,   // 一般纳税人税率（货物）
+  CIT: 0.25,           // 企业所得税标准税率
+  CIT_SMALL: 0.05,     // 小型微利企业优惠（年应税所得额≤300万部分）
+  FORCE_THRESHOLD: 500, // 年应税销售额超 500万 强制登记为一般纳税人
+}
+
+// ---------- 创建公司（空壳：资金/资产由后续剧情步骤注入） ----------
+export function createCompany(companyId, diffId = 'easy') {
+  const co = getCompany(companyId)
+  const balances = INITIAL_BALANCES()
+  const state = {
+    companyId, co, month: 0, balances, ledger: [], loans: [],
+    vouchers: [], errors: [], lives: DIFFICULTY[diffId].lives, difficulty: diffId,
+    penalty: 0, history: [], failed: false, failedReason: '', scale: 1,
+    taxType: 'small', cumSales: 0, vatOutput: 0, vatInput: 0,
+    forcedGeneral: false, boost: 0, choices: {},
+  }
+  return state
+}
+
+// 注入启动资金（由第一章"出资方式"决策触发，真正影响后续经营规模）
+// 本金（实收资本）固定 = co.initCash；借款是额外借入的，放大经营规模。
+// choice: 'full' 不借款 | 'part' 借本金30% | 'low' 借本金70%
+export function applyFunding(state, choice) {
+  const co = state.co
+  const own = co.initCash                       // 本金（股东出资）固定
+  let borrow
+  if (choice === 'low') borrow = +(own * 0.7).toFixed(1)
+  else if (choice === 'part') borrow = +(own * 0.3).toFixed(1)
+  else borrow = 0
+  state.balances['银行存款'] = +(own + borrow).toFixed(1)  // 可动用资金 = 本金 + 借款
+  state.balances['实收资本'] = own
+  state.balances['短期借款'] = borrow
+  state.scale = +((own + borrow) / own).toFixed(3)         // 借款放大经营规模
+  state.loans = borrow > 0 ? [{ principal: borrow, rate: co.economics.interestRate, since: 1 }] : []
+  state.choices.leverage = choice
+  return state
+}
+
+// 扩张决策：借款或利润再投入，放大经营规模（影响后续工资/利息/营收）
+export function applyExpand(state, { borrow = 0, own = 0 } = {}) {
+  const co = state.co
+  if (borrow > 0) {
+    applyBusiness(state, mk('银行存款', borrow, '短期借款', borrow, '扩张：银行借款'), state.month)
+    state.loans.push({ principal: borrow, rate: co.economics.interestRate, since: state.month + 1 })
+  }
+  if (own > 0) {
+    applyBusiness(state, mk('银行存款', own, '实收资本', own, '扩张：利润再投入'), state.month)
+  }
+  state.scale = +((state.scale || 1) + (borrow + own) / co.initCash).toFixed(3)
+  return state
+}
+
+// 设置纳税人类型（第一章决策）：small 小规模 / general 一般纳税人
+export function applyTaxType(state, type) {
+  state.taxType = type === 'general' ? 'general' : 'small'
+  state.choices.taxType = state.taxType
+  return state
+}
+
+// 销售：按纳税人类型计销项税，累计销售额与销项；返回 entries
+export function vatOnSale(state, saleAmt, revenueAccount) {
+  const rate = state.taxType === 'general' ? TAX.VAT_GENERAL : TAX.VAT_SMALL
+  const vat = +(saleAmt * rate).toFixed(2)
+  state.cumSales = +(state.cumSales + saleAmt).toFixed(2)
+  state.vatOutput = +(state.vatOutput + vat).toFixed(2)
+  const entries = [
+    { side: 'debit', account: '银行存款', amount: +(saleAmt + vat).toFixed(2) },
+    { side: 'credit', account: revenueAccount, amount: saleAmt },
+    { side: 'credit', account: '应交税费-销项', amount: vat },
+  ]
+  return { entries, vat, saleAmt, rate }
+}
+
+// 采购：一般纳税人可抵扣进项（形成进项税资产），累计进项
+export function vatOnPurchase(state, purAmt, onCredit) {
+  const rate = state.taxType === 'general' ? TAX.VAT_GENERAL : 0
+  const vat = +(purAmt * rate).toFixed(2)
+  state.vatInput = +(state.vatInput + vat).toFixed(2)
+  const debit = [{ side: 'debit', account: '库存商品', amount: purAmt }]
+  if (vat > 0) debit.push({ side: 'debit', account: '应交税费-进项', amount: vat })
+  const credit = onCredit
+    ? [{ side: 'credit', account: '应付账款', amount: +(purAmt + vat).toFixed(2) }]
+    : [{ side: 'credit', account: '银行存款', amount: +(purAmt + vat).toFixed(2) }]
+  return { entries: [...debit, ...credit], vat }
+}
+
+// 年销售额超阈值 → 强制转为一般纳税人（真实税法规定）
+export function maybeForceGeneral(state) {
+  if (state.taxType === 'small' && state.cumSales > TAX.FORCE_THRESHOLD) {
+    state.taxType = 'general'
+    state.forcedGeneral = true
+    state.choices.taxType = 'general'
+    return true
+  }
+  return false
+}
+
+// 投入决策：影响后续营收规模（高投入→更高回报但有前置成本）
+export function applyInvest(state, kind, level) {
+  state.choices[kind] = level
+  if (kind === 'market') {
+    if (level === 'high') {
+      const cost = +(state.co.economics.dealSize * (state.scale || 1) * 0.5).toFixed(1)
+      applyBusiness(state, mk('银行存款', cost, '管理费用-营销', cost, '高投入营销'), state.month)
+      state.boost = (state.boost || 0) + 0.25
+    } else {
+      state.boost = (state.boost || 0) + 0.05
+    }
+  }
+  return state
+}
+
+// 结账缴税：增值税（小规模=销项；一般人=销项-进项）+ 企业所得税（利息已税前扣除形成抵税）
+export function settleTax(state) {
+  let vatPayable = state.taxType === 'general'
+    ? +(state.vatOutput - state.vatInput).toFixed(2)
+    : +state.vatOutput.toFixed(2)
+  vatPayable = Math.max(0, vatPayable)
+  const accountingProfit = state.balances['本年利润'] || 0
+  const citRate = accountingProfit > 0 && accountingProfit <= 300 ? TAX.CIT_SMALL : TAX.CIT
+  const cit = +(Math.max(0, accountingProfit) * citRate).toFixed(2)
+  const entries = []
+  if (vatPayable > 0) {
+    entries.push(...mk('应交税费-销项', state.vatOutput, '应交税费-未交增值税', state.vatOutput, '结转销项税额'))
+    if (state.taxType === 'general' && state.vatInput > 0) {
+      entries.push(...mk('应交税费-未交增值税', state.vatInput, '应交税费-进项', state.vatInput, '结转进项税额'))
+    }
+    entries.push(...mk('应交税费-未交增值税', vatPayable, '银行存款', vatPayable, '缴纳增值税'))
+  }
+  if (cit > 0) {
+    entries.push(...mk('所得税费用', cit, '应交税费-所得税', cit, '计提企业所得税'))
+    entries.push(...mk('应交税费-所得税', cit, '银行存款', cit, '缴纳企业所得税'))
+  }
+  applyBusiness(state, entries, '缴纳税金', state.month)
+  state.vatOutput = 0; state.vatInput = 0
+  return { vatPayable, cit, taxType: state.taxType, forced: state.forcedGeneral }
+}
+
+function mk(d, da, c, ca, desc) {
+  return [
+    { side: 'debit', account: d, amount: da, desc },
+    { side: 'credit', account: c, amount: ca, desc },
+  ]
+}
+function withMeta(e, month, i) {
+  return { desc: e.desc || '', debit: e.side === 'debit' ? e.account : '', credit: e.side === 'credit' ? e.account : '', amt: e.amount, month, idx: i }
+}
+
+// 应用分录（按科目性质记账 + 写账本）
+export function applyBusiness(state, entries, desc, month) {
+  const ledger = [...state.ledger]
+  entries.forEach((e) => bump(state.balances, e.account, e.side, e.amount))
+  entries.forEach((e, i) => ledger.push(withMeta(e, month ?? state.month, ledger.length + i)))
+  state.ledger = ledger
+  return state
+}
+
+// 记录一张凭证（玩家自写或系统生成）。expected 为正确分录模板用于判分
+export function recordVoucher(state, { desc, actual, expected, month }) {
+  const correct = gradeEntries(actual, expected)
+  const v = { id: state.vouchers.length + 1, month: month ?? state.month, desc, actual, expected, correct }
+  state.vouchers.push(v)
+  if (!correct) state.errors.push(v.id)
+  return v
+}
+
+// 判分：比较借贷两边（科目等价 + 金额相等）。expected 形如 [{side,account,amount}]
+export function gradeEntries(actual, expected) {
+  if (!actual || actual.length !== expected.length) return false
+  const norm = (list) => list.map((e) => ({ side: e.side, account: e.account, amount: +e.amount }))
+    .sort((a, b) => (a.side + a.account).localeCompare(b.side + b.account) || a.amount - b.amount)
+  const a = norm(actual), b = norm(expected)
+  return a.every((e, i) => e.side === b[i].side && e.account === b[i].account && Math.abs(e.amount - b[i].amount) < 0.001)
+}
+
+// ---------- 月末结账 ----------
+export function monthEnd(state, opts = {}) {
+  const co = state.co
+  const m = state.month + 1
+  state.month = m
+  const newEntries = []
+
+  co.fixedAssets.forEach((fa) => newEntries.push(...mk('管理费用-折旧', fa.monthlyDep, '累计折旧', fa.monthlyDep, `计提${fa.name}折旧`)))
+  state.loans.forEach((loan) => {
+    const interest = +(loan.principal * loan.rate).toFixed(2)
+    if (m >= loan.since) newEntries.push(...mk('财务费用-利息', interest, '应付利息', interest, `计提借款利息(月${m})`))
+  })
+  // 房租/工资由剧情步骤按企业经济参数×规模计提，这里不再重复
+  applyBusiness(state, newEntries, `第${m}月末结账`, m)
+
+  // 结转损益
+  const rev = sumAccount(state.balances, '主营业务收入')
+  const costs = sumAccount(state.balances, '主营业务成本') + sumAccount(state.balances, '管理费用') +
+    sumAccount(state.balances, '财务费用') + sumAccount(state.balances, '研发费用') + sumAccount(state.balances, '所得税费用')
+  state.balances['本年利润'] = +(rev - costs).toFixed(2)
+
+  state.history.push({ month: m, cash: state.balances['银行存款'], profit: state.balances['本年利润'], revenue: rev, totalAssets: totalAssets(state.balances) })
+  return state
+}
+
+// 结账后纠错：检查本月错误凭证，扣款并生成调整任务（返回调整任务列表）
+export function settleErrors(state) {
+  const diff = DIFFICULTY[state.difficulty]
+  const bad = state.vouchers.filter((v) => !v.correct && v.adjustDone !== true && !v.pardoned)
+  if (bad.length === 0) return { tasks: [], penalized: 0 }
+
+  const penalized = bad.length * (state.difficulty === 'hardcore' ? 0 : 0.5) // 罚款（硬核直接失败）
+  let tasks = []
+  if (diff.autoFix) {
+    // 简单模式：自动修正，不罚钱，仅提示
+    bad.forEach((v) => {
+      v.pardoned = true
+      applyBusiness(state, v.expected, `自动修正：${v.desc}`, state.month)
+    })
+  } else if (state.difficulty === 'hardcore') {
+    state.failed = true
+    state.failedReason = '硬核模式：凭证记错一次即失败'
+    return { tasks: [], penalized: 0, fatal: true }
+  } else {
+    // 困难模式：扣现金 + 要求做调整分录
+    state.balances['银行存款'] = +(state.balances['银行存款'] - penalized).toFixed(2)
+    state.penalty += penalized
+    tasks = bad.map((v) => ({
+      vid: v.id,
+      desc: v.desc,
+      wrong: v.actual,
+      hint: `原业务应记为：${v.expected.map((e) => `${e.side === 'debit' ? '借' : '贷'} ${e.account} ${e.amount}`).join(' / ')}`,
+      done: false,
+    }))
+  }
+  return { tasks, penalized }
+}
+
+// 应用玩家补做的调整分录
+export function applyAdjust(state, vid, entries) {
+  const v = state.vouchers.find((x) => x.id === vid)
+  if (!v) return false
+  applyBusiness(state, entries, `调整分录：修正${v.desc}`, state.month)
+  v.adjustDone = true
+  return true
+}
+
+// 容错：扣一次机会
+export function loseLife(state) {
+  state.lives -= 1
+  if (state.lives < 0) {
+    state.failed = true
+    state.failedReason = '容错次数用尽，经营失败'
+  }
+  return state.lives
+}
+
+export function totalAssets(b) {
+  return +(b['银行存款'] + b['库存现金'] + b['应收账款'] + b['原材料'] + b['库存商品'] +
+    b['生产成本'] + b['固定资产'] - b['累计折旧'] + b['无形资产'] - b['累计摊销'] + b['研发支出'] + b['预付账款']).toFixed(2)
+}
+
+export function sumAccount(b, parent) {
+  let s = 0
+  for (const k of Object.keys(b)) if (k === parent || k.startsWith(parent + '-')) s += (b[k] || 0)
+  return +s.toFixed(2)
+}
+
+// 资不抵债判定（破产）
+export function isBankrupt(state) {
+  const assets = totalAssets(state.balances)
+  const debt = sumAccount(state.balances, '短期借款') + sumAccount(state.balances, '应付账款') +
+    sumAccount(state.balances, '应付职工薪酬') + sumAccount(state.balances, '应付利息') + sumAccount(state.balances, '应交税费')
+  return assets < debt || state.balances['银行存款'] < 0
+}
+
+export function buildReports(state) {
+  const b = state.balances
+  const assets = [
+    { item: '货币资金', value: +(b['银行存款'] + b['库存现金']).toFixed(2), side: 'asset' },
+    { item: '应收账款', value: +b['应收账款'].toFixed(2), side: 'asset' },
+    { item: '存货(含原材料/库存/在产)', value: +(b['原材料'] + b['库存商品'] + b['生产成本']).toFixed(2), side: 'asset' },
+    { item: '预付账款', value: +b['预付账款'].toFixed(2), side: 'asset' },
+    { item: '固定资产(净值)', value: +(b['固定资产'] - b['累计折旧']).toFixed(2), side: 'asset' },
+    { item: '无形资产(净值)', value: +(b['无形资产'] - b['累计摊销']).toFixed(2), side: 'asset' },
+    { item: '研发支出', value: +b['研发支出'].toFixed(2), side: 'asset' },
+  ]
+  const liabilities = [
+    { item: '短期借款', value: +b['短期借款'].toFixed(2), side: 'liability' },
+    { item: '应付账款', value: +b['应付账款'].toFixed(2), side: 'liability' },
+    { item: '应付职工薪酬', value: +b['应付职工薪酬'].toFixed(2), side: 'liability' },
+    { item: '应付利息', value: +b['应付利息'].toFixed(2), side: 'liability' },
+    { item: '应交税费', value: +b['应交税费'].toFixed(2), side: 'liability' },
+  ]
+  const equity = [
+    { item: '实收资本/股本', value: +(b['实收资本'] + b['股本']).toFixed(2), side: 'equity' },
+    { item: '本年利润', value: +b['本年利润'].toFixed(2), side: 'equity' },
+  ]
+  const balance = { type: 'balance', rows: [...assets, ...liabilities, ...equity] }
+
+  const income = {
+    type: 'income',
+    rows: [
+      { item: '营业收入', value: sumAccount(b, '主营业务收入') },
+      { item: '营业成本', value: -sumAccount(b, '主营业务成本') },
+      { item: '管理费用', value: -sumAccount(b, '管理费用') },
+      { item: '财务费用', value: -sumAccount(b, '财务费用') },
+      { item: '研发费用', value: -sumAccount(b, '研发费用') },
+    ],
+  }
+  return { balance, income }
+}

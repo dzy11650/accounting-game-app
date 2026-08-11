@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/coin.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#FF8A5B" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>会计小当家 · 零基础会计闯关</title>
+    <script>
+      // 早期兜底：模块加载/解析失败也能显示原因，避免纯白屏
+      window.addEventListener('error', function (e) {
+        var root = document.getElementById('root');
+        if (!root) return;
+        var msg = (e && (e.message || (e.error && e.error.message))) || '未知错误';
+        var stack = e && e.error && e.error.stack ? e.error.stack : '';
+        root.innerHTML = '<div style="padding:16px;font-family:sans-serif;color:#e74c3c"><div style="font-weight:800;font-size:16px">⚠️ 启动出错</div><div style="margin-top:8px;font-weight:700;white-space:pre-wrap;word-break:break-all">' + msg + '</div>' + (stack ? '<pre style="white-space:pre-wrap;font-size:12px;background:#fbeaea;padding:10px;border-radius:8px;margin-top:8px;max-height:300px;overflow:auto">' + stack + '</pre>' : '') + '</div>';
+      }, true);
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+
+    <script>
+    // 安卓 WebView 沉浸式状态栏：把安全区内边距注入到 CSS 变量，供页面使用
+    (function () {
+      function setSafeArea() {
+        // 部分 WebView 不直接支持 env()，这里兜底用 0
+        document.documentElement.style.setProperty('--sat', 'env(safe-area-inset-top, 0px)');
+        document.documentElement.style.setProperty('--sab', 'env(safe-area-inset-bottom, 0px)');
+      }
+      setSafeArea();
+    })();
+    </script>
+  </body>
+</html>
