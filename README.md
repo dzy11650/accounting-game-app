@@ -107,6 +107,16 @@ cd android
 > 所有安装包发布于 Release **[v1.0.0-release](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v1.0.0-release)**。
 > Tauri 版文件名为英文（`kjxdj-tauri.exe`），以避免中文文件名在部分系统下显示异常。
 
+## 赞助
+
+如果这个项目对你有帮助，欢迎请作者喝杯奶茶 ☕（以下为占位示意图，非真实收款码）：
+
+<div align="center">
+  <img src="/sponsor-wechat.svg" width="200" alt="微信赞助占位" />
+  <img src="/sponsor-alipay.svg" width="200" alt="支付宝赞助占位" />
+  <p><sub>占位示意图，仅用于展示版式，不含任何真实收款信息。</sub></p>
+</div>
+
 ## 许可证
 
 本项目仅供学习交流使用。
