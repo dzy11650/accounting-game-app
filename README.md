@@ -109,12 +109,12 @@ cd android
 
 ## 赞助
 
-如果这个项目对你有帮助，欢迎请作者喝杯奶茶 ☕（以下为占位示意图，非真实收款码）：
+如果这个项目对你有帮助，欢迎请作者喝杯奶茶 ☕：
 
 <div align="center">
-  <img src="/sponsor-wechat.svg" width="200" alt="微信赞助占位" />
-  <img src="/sponsor-alipay.svg" width="200" alt="支付宝赞助占位" />
-  <p><sub>占位示意图，仅用于展示版式，不含任何真实收款信息。</sub></p>
+  <img src="/wechat-pay.jpg" width="220" alt="微信收款码" />
+  <img src="/alipay-pay.jpg" width="220" alt="支付宝收款码" />
+  <p><sub>扫码即可赞助，支持微信 / 支付宝（信用卡、花呗可用）。</sub></p>
 </div>
 
 ## 许可证
