@@ -171,10 +171,26 @@ function Game() {
     const amt = (base) => diff.randFund ? r(base * 0.8, base * 1.3) : +base.toFixed(1)
 
     if (action.type === 'rent') {
-      const rent = +(eco.rent * scale).toFixed(1)
-      desc = `付押金及首月房租¥${rent}万`
-      entries.push(...mk('预付账款', rent, '银行存款', rent, desc))
-      entries.push(...mk('管理费用-房租', rent, '银行存款', rent, desc))
+      // 多付/少付：预付 months 个月房租，折扣 discount（多付折扣多、少付现金流压力小）
+      const months = action.months || 1
+      const discount = action.discount || 0
+      const grossMonthly = eco.rent * scale
+      const monthlyRent = +(grossMonthly * (1 - discount)).toFixed(1) // 折扣后月租
+      const deposit = +grossMonthly.toFixed(1) // 押金按原价（1个月房租）
+      const prepaid = +(monthlyRent * months).toFixed(1) // 预付房租（含折扣）
+      const totalOut = +(deposit + prepaid).toFixed(1)
+      // 记录决策，供月末摊销使用（权责发生制）
+      s.choices.rentMonths = months
+      s.choices.rentDiscount = discount
+      desc = `付押金¥${deposit}万 + 预付房租${months}个月¥${prepaid}万${discount ? `（享${Math.round(discount * 100)}%折扣）` : ''}`
+      // 押金计入预付账款(资产)，预付房租挂"预付账款-房租"后续按月摊销
+      entries.push(...mk('预付账款', deposit, '银行存款', deposit, desc))
+      entries.push(...mk('预付账款-房租', prepaid, '银行存款', prepaid, desc))
+      if (s.balances['预付账款-房租'] == null) s.balances['预付账款-房租'] = 0
+      s.balances['预付账款-房租'] = +(s.balances['预付账款-房租'] + prepaid).toFixed(2)
+      // 本月仍摊销一个月房租进费用（首月即生效）
+      entries.push(...mk('管理费用-房租', monthlyRent, '预付账款-房租', monthlyRent, desc))
+      s.balances['预付账款-房租'] = +(s.balances['预付账款-房租'] - monthlyRent).toFixed(2)
       expected = entries
     } else if (action.type === 'fixed') {
       const total = +(s.balances['银行存款'] * action.ratio).toFixed(1)
@@ -253,6 +269,19 @@ function Game() {
       applyInvest(s, a.kind, a.level) // a.kind='market', a.level='high'|'low'
       setToast(`投入决策（${a.kind}）：${a.level === 'high' ? '高投入→后续营收+25%，但前置营销成本已发生' : '低投入→营收小幅提升，无前置成本'}`)
       return { handled: true, selfContained: false }
+    }
+    // 第七章持续经营：开始 / 继续下一个月（回到本章"进货"步，重复经营）
+    if (a.type === 'loopStart' || a.type === 'loopContinue') {
+      const back = 1 // 回到"进货"步（step1），重复 进→销→薪→结
+      setSim(s); setStepIdx(back); persist(s, coId, diffId, chapterIdx, back, false)
+      setToast(a.type === 'loopStart' ? '🚀 开始持续经营！' : `⏭️ 进入第 ${s.month} 月经营`)
+      return { handled: true, selfContained: true }
+    }
+    // 结业清算：出最终成绩单
+    if (a.type === 'close') {
+      setSim(s)
+      finish(s)
+      return { handled: true, selfContained: true }
     }
     return { handled: false }
   }
@@ -530,7 +559,9 @@ function Game() {
       </div>
 
       <div className="card" style={{ background: '#FFFDF8', borderLeft: '5px solid var(--primary)' }}>
-        <div style={{ fontWeight: 700, color: 'var(--primary-deep)', fontSize: 13 }}>{chapter.title} · 第{sim.month}月</div>
+        <div style={{ fontWeight: 700, color: 'var(--primary-deep)', fontSize: 13 }}>
+          {chapter.title} · 第{sim.month}月{chapter.loop ? `（第 ${Math.ceil(sim.month / 12)} 年）` : ''}
+        </div>
         <div style={{ marginTop: 6, lineHeight: 1.7 }}>{step?.npc}</div>
         {step?.teach && (
           <div style={{ marginTop: 8, fontSize: 12, color: 'var(--accent-deep)', background: '#E9F8F6', padding: '8px 10px', borderRadius: 8 }}>💡 {step.teach}</div>
