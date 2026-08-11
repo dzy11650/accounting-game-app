@@ -233,7 +233,19 @@ export function monthEnd(state, opts = {}) {
     const interest = +(loan.principal * loan.rate).toFixed(2)
     if (m >= loan.since) newEntries.push(...mk('财务费用-利息', interest, '应付利息', interest, `计提借款利息(月${m})`))
   })
-  // 房租/工资由剧情步骤按企业经济参数×规模计提，这里不再重复
+  // 预付房租摊销：多付房租时一次性挂"预付账款-房租"，这里按月摊销进费用（权责发生制）
+  const prepRent = state.choices?.rentMonths
+  if (prepRent && prepRent > 0 && (state.balances['预付账款-房租'] || 0) > 0) {
+    const grossMonthly = co.economics.rent * (state.scale || 1)
+    const discount = state.choices.rentDiscount || 0
+    const monthlyRent = +(grossMonthly * (1 - discount)).toFixed(2)
+    const remain = state.balances['预付账款-房租']
+    const amort = remain >= monthlyRent ? monthlyRent : remain
+    if (amort > 0) {
+      newEntries.push(...mk('管理费用-房租', amort, '预付账款-房租', amort, `摊销预付房租(月${m})`))
+      state.balances['预付账款-房租'] = +(remain - amort).toFixed(2)
+    }
+  }
   applyBusiness(state, newEntries, `第${m}月末结账`, m)
 
   // 结转损益
