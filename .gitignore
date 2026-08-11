@@ -15,6 +15,11 @@ android/**/*.iml
 *.apk
 *.aab
 
+# Tauri 构建产物
+src-tauri/target/
+target-tauri/
+target/
+
 # Capacitor 拷贝生成的 web 资源（由 cap sync 重新生成）
 android/app/src/main/assets/
 
