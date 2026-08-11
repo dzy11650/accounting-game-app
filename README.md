@@ -94,6 +94,19 @@ cd android
 | `ANDROID_KEY_ALIAS` | 密钥别名 | `accounting` |
 | `ANDROID_KEY_PASSWORD` | 密钥密码 | `android123` |
 
+## 下载安装包
+
+已打包好的各平台安装包可在 Gitee Releases 下载（无需自行构建）：
+
+| 平台 | 文件 | 大小 | 说明 |
+| --- | --- | --- | --- |
+| 🤖 安卓 | [app-release.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.0-release/app-release.apk) | 3.0 MB | 已签名，可直接安装到安卓手机 |
+| 🪟 Windows（Electron 便携版） | [kjxdj-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.0-release/kjxdj-portable.exe) | 71 MB | 双击即用，免安装 |
+| 🪟 Windows（Tauri 版） | [kjxdj-tauri.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.0-release/kjxdj-tauri.exe) | 4.1 MB | 体积更小、启动更快，双击即用 |
+
+> 所有安装包发布于 Release **[v1.0.0-release](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v1.0.0-release)**。
+> Tauri 版文件名为英文（`kjxdj-tauri.exe`），以避免中文文件名在部分系统下显示异常。
+
 ## 许可证
 
 本项目仅供学习交流使用。
