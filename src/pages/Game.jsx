@@ -18,6 +18,9 @@ const ALL_ACCOUNTS = ['银行存款', '库存商品', '原材料', '生产成本
 
 const SAVE_KEY = 'accounting_game_save_v1'
 
+// 万元金额显示：先修约到小数点后1位，消除浮点累积误差（如 27.650000000000002）
+const fmtW = (v) => Number((v || 0).toFixed(1)).toFixed(1)
+
 // 错误边界：捕获渲染期异常，避免白屏，直接显示错误信息与堆栈
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -407,7 +410,7 @@ function Game() {
     const cash = s.balances['银行存款']
     const ok = cash >= 0 && !s.failed
     const stars = ok ? Math.max(1, Math.min(3, (cash > 10 ? 1 : 0) + (profit > 0 ? 1 : 0) + (s.lives >= (diff.lives - 1) ? 1 : 0))) : 0
-    const res = { ok, stars, reason: ok ? `通关！净利润¥${profit}万 现金¥${cash}万` : '未达成通关条件', profit, cash }
+    const res = { ok, stars, reason: ok ? `通关！净利润¥${fmtW(profit)}万 现金¥${fmtW(cash)}万` : '未达成通关条件', profit, cash }
     setResult(res)
     setEnded(true)
     dispatch({ type: 'ADD_COINS', amount: ok ? 50 : 20 })
@@ -500,8 +503,8 @@ function Game() {
           )}
           {result && (
             <div className="card" style={{ background: '#FFFDF8', textAlign: 'left', marginTop: 10 }}>
-              <div>净利润：¥{result.profit}万</div>
-              <div>现金余额：¥{result.cash}万</div>
+              <div>净利润：¥{fmtW(result.profit)}万</div>
+              <div>现金余额：¥{fmtW(result.cash)}万</div>
               <div>容错剩余：{sim?.lives ?? 0}</div>
             </div>
           )}
@@ -552,8 +555,8 @@ function Game() {
           <span className="chip">{diff.name}</span>
         </div>
         <div className="flex gap8 mt12">
-          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>💵 现金</span><span className="v">¥{sim.balances['银行存款'].toFixed(1)}万</span></div>
-          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>📈 利润</span><span className="v">¥{(sim.balances['本年利润'] || 0).toFixed(1)}万</span></div>
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>💵 现金</span><span className="v">¥{fmtW(sim.balances['银行存款'])}万</span></div>
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>📈 利润</span><span className="v">¥{fmtW(sim.balances['本年利润'])}万</span></div>
           <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>❤️ 容错</span><span className="v">{sim.lives}</span></div>
         </div>
       </div>
@@ -700,7 +703,7 @@ function ReportLite({ report }) {
       <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{report.type === 'balance' ? '资产负债表' : '利润表'}</div>
       {report.rows.map((r, i) => (
         <div key={i} className="flex between center" style={{ fontSize: 12, padding: '2px 0' }}>
-          <span>{r.item}</span><span>¥{Math.abs(r.value).toFixed(1)}万</span>
+          <span>{r.item}</span><span>¥{fmtW(Math.abs(r.value))}万</span>
         </div>
       ))}
     </div>
