@@ -112,6 +112,7 @@ cd android
 
 ### v2.0.1 修复内容
 - 🐛 **修复 Tauri 桌面启动运行时 `moodFactor is not defined` 报错**：旧 v2.0.0 Tauri 包内含陈旧 dist 资源导致选择业务时崩溃，已重新构建并上传 2.0.1。
+- 🐛 **修复选择邪道玩法「欠薪」时 `eco is not defined` 报错**：`evilSalary` 分支漏声明 `eco` 变量，导致第七章不发工资选项点击崩溃，已补 `const eco = s.co.economics`。
 - 🐛 修复：赊购账期（应付账款）未入账导致偿还时现金被错误扣减的问题。
 - 🐛 修复：报税后企业所得税未结转至本年利润导致报表不平的问题。
 - 🐛 修复：`trackChoice` 未返回新 state 导致部分交互状态不刷新。

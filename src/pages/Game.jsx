@@ -314,6 +314,7 @@ function Game() {
     // 第七章邪道玩法：不发工资 / 不交税 / 虚开发票
     if (a.type === 'evilSalary') {
       // 不发工资：当月不计提工资费用（省成本），但欠薪挂账，埋下劳动稽查风险
+      const eco = s.co.economics
       const due = +(eco.salary * (s.scale || 1)).toFixed(1)
       s.balances['应付职工薪酬'] = +(s.balances['应付职工薪酬'] || 0 + due).toFixed(2)
       const msg = evilAct(s, 'salary')
