@@ -7,8 +7,8 @@ import {
   createCompany, applyBusiness, monthEnd, buildReports, isBankrupt,
   recordVoucher, settleErrors, applyAdjust, loseLife, DIFFICULTY,
   applyFunding, applyExpand, applyTaxType, vatOnSale, vatOnPurchase,
-  maybeForceGeneral, applyInvest, settleTax, TAX,
-  liabilityTotal, operatingRevenue, MOOD_LABEL, rollYearMood, evilAct,
+  maybeForceGeneral, applyInvest, settleTax, declareDividend, TAX, TAX_PLANS,
+  liabilityTotal, operatingRevenue, MOOD_LABEL, rollYearMood, evilAct, fmtW,
 } from '../lib/engine.js'
 import EntryAnimation from '../components/EntryAnimation.jsx'
 import Toast from '../components/Toast.jsx'
@@ -18,9 +18,6 @@ const ALL_ACCOUNTS = ['银行存款', '库存商品', '原材料', '生产成本
   '实收资本', '主营业务收入', '主营业务成本', '管理费用', '财务费用']
 
 const SAVE_KEY = 'accounting_game_save_v1'
-
-// 万元金额显示：先修约到小数点后1位，消除浮点累积误差（如 27.650000000000002）
-const fmtW = (v) => Number((v || 0).toFixed(1)).toFixed(1)
 
 // 错误边界：捕获渲染期异常，避免白屏，直接显示错误信息与堆栈
 class ErrorBoundary extends React.Component {
@@ -229,6 +226,7 @@ function Game() {
       applyBusiness(s, res.entries, `卖货¥${a}万`)
       applyBusiness(s, costE, '结转成本'); s.balances['库存商品'] -= cost
       desc = `卖货¥${a}万（销项税¥${res.vat}万）`
+      s.quarterRevenue = +(s.quarterRevenue || 0) + a // 累计本季营收（小规模免税判定）
       if (forced) setToast('⚠️ 年销售额超500万，已强制转为一般纳税人！税率13%且可抵扣进项')
       return { entries, expected, desc, s }
     } else if (action.type === 'salary') {
@@ -261,8 +259,26 @@ function Game() {
       doMonthEnd(s); return { handled: true, selfContained: true }
     }
     if (a.type === 'tax') {
-      const res = settleTax(s)
-      setToast(`缴税：增值税¥${res.vatPayable}万 + 企业所得税¥${res.cit}万（${res.taxType === 'general' ? '一般纳税人' : '小规模'}）${res.forced ? ' · 已强制转一般纳税人' : ''}`)
+      const plans = a.plans || [] // 合法税务筹划手段数组
+      const res = settleTax(s, plans)
+      const planNote = plans.length ? '（已做合法筹划，少缴税✓）' : ''
+      s.usedTaxPlans = [...new Set([...(s.usedTaxPlans || []), ...plans])]
+      setToast(`缴税：增值税¥${res.vatPayable}万 + 企业所得税¥${res.cit}万（${res.taxType === 'general' ? '一般纳税人' : '小规模'}）${res.forced ? ' · 已强制转一般纳税人' : ''}${planNote}`)
+      return { handled: true, selfContained: false }
+    }
+    // 股东分红：从税后利润中按 ratio 分配（可选比例）
+    if (a.type === 'dividend') {
+      const ratio = a.ratio || 0
+      if (ratio <= 0) {
+        setToast('📈 本年利润留存公司，暂不分红（可用于后续扩张或抵御歉年）')
+        return { handled: true, selfContained: false }
+      }
+      const res = declareDividend(s, ratio)
+      if (!res.ok) setToast('💡 ' + res.msg)
+      else {
+        setToast(`🎉 股东分红：实得 ${fmtW(res.amount)}万（含税分红 ${fmtW(res.gross)}万，代扣个税 ${fmtW(res.tax)}万）`)
+        s.usedTaxPlans = s.usedTaxPlans || []
+      }
       return { handled: true, selfContained: false }
     }
     if (a.type === 'expand') {
@@ -599,6 +615,12 @@ function Game() {
           <div className="flex gap8 mt8">
             <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🌤️ 行情</span><span className="v">{MOOD_LABEL[sim.yearMood] || '⛅ 平常年'}（第{sim.year || 1}年）</span></div>
             <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>😈 邪道</span><span className="v">{sim.evilCount || 0} 次</span></div>
+          </div>
+        )}
+        {(chapter.loop) && (sim.totalDividend > 0 || (sim.usedTaxPlans || []).length) && (
+          <div className="flex gap8 mt8">
+            <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>💰 累计分红</span><span className="v">¥{fmtW(sim.totalDividend || 0)}万</span></div>
+            <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🛡️ 合法筹划</span><span className="v">{(sim.usedTaxPlans || []).length ? sim.usedTaxPlans.map((p) => TAX_PLANS[p]?.name || p).join('/') : '未使用'}</span></div>
           </div>
         )}
       </div>

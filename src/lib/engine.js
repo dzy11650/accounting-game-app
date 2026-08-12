@@ -3,6 +3,9 @@
 
 import { getCompany } from '../data/companies.js'
 
+// 金额格式化：保留 1 位小数（万元单位），消除浮点尾差如 27.650000000000002
+export const fmtW = (v) => Number((v || 0).toFixed(1)).toFixed(1)
+
 const INITIAL_BALANCES = () => ({
   银行存款: 0, 库存现金: 0, 应收账款: 0, 应付账款: 0, 原材料: 0, 库存商品: 0,
   生产成本: 0, 固定资产: 0, 累计折旧: 0, 累计摊销: 0, 无形资产: 0, 研发支出: 0,
@@ -47,8 +50,19 @@ export const TAX = {
   VAT_SMALL: 0.03,     // 小规模纳税人征收率
   VAT_GENERAL: 0.13,   // 一般纳税人税率（货物）
   CIT: 0.25,           // 企业所得税标准税率
-  CIT_SMALL: 0.05,     // 小型微利企业优惠（年应税所得额≤300万部分）
+  CIT_SMALL: 0.05,     // 小型微利企业优惠（年应税所得额≤300万部分，实际税负5%）
+  RND_SUPER: 1.0,      // 研发费用加计扣除比例（100%，即每花1元研发，税前扣除2元）
   FORCE_THRESHOLD: 500, // 年应税销售额超 500万 强制登记为一般纳税人
+}
+
+// 合理避税（合法税务筹划）手段，与邪道偷逃税严格区分：
+// - smallBenefit：利用小型微利企业优惠（年应税所得≤300万按5%而非25%）
+// - rndDeduction：研发费用加计扣除（花1元研发，税前扣除2元，少缴所得税）
+// - vatSmall：小规模纳税人季度≤30万免增值税（普票）
+export const TAX_PLANS = {
+  smallBenefit: { id: 'smallBenefit', name: '小型微利优惠', desc: '年应税所得≤300万，所得税按5%而非25%' },
+  rndDeduction: { id: 'rndDeduction', name: '研发加计抵扣', desc: '研发费用加计扣除100%，税前扣除翻倍' },
+  vatSmall: { id: 'vatSmall', name: '小规模免税', desc: '小规模纳税人季度销售额≤30万免征增值税' },
 }
 
 // ---------- 创建公司（空壳：资金/资产由后续剧情步骤注入） ----------
@@ -67,6 +81,9 @@ export function createCompany(companyId, diffId = 'easy') {
     evilCount: 0,                  // 累计"邪道玩法"次数
     evilEvents: [],                // 已埋下的雷：{atYear, type}（恶果延迟爆发）
     skippedTaxMonths: 0,           // 累计未缴税月数（用于爆雷时补缴+罚款）
+    totalDividend: 0,              // 累计已分红净额（股东实得）
+    quarterRevenue: 0,             // 本季度累计营收（用于小规模免税判定）
+    usedTaxPlans: [],              // 已采用的合法筹划手段 id 列表
   }
   return state
 }
@@ -165,14 +182,31 @@ export function applyInvest(state, kind, level) {
 }
 
 // 结账缴税：增值税（小规模=销项；一般人=销项-进项）+ 企业所得税（利息已税前扣除形成抵税）
-export function settleTax(state) {
+// plans: 合法税务筹划手段数组，例如 ['smallBenefit','rndDeduction','vatSmall']
+// 注意：合理避税（合法筹划）不增加 evilCount；偷逃税请用 evilAct('tax'/'fakeInvoice')
+export function settleTax(state, plans = []) {
+  const planSet = new Set(plans)
   let vatPayable = state.taxType === 'general'
     ? +(state.vatOutput - state.vatInput).toFixed(2)
     : +state.vatOutput.toFixed(2)
   vatPayable = Math.max(0, vatPayable)
-  const accountingProfit = state.balances['本年利润'] || 0
-  const citRate = accountingProfit > 0 && accountingProfit <= 300 ? TAX.CIT_SMALL : TAX.CIT
-  const cit = +(Math.max(0, accountingProfit) * citRate).toFixed(2)
+  // 小规模纳税人 + 季度≤30万普票：合法免征增值税
+  if (state.taxType !== 'general' && planSet.has('vatSmall') && vatPayable > 0 && (state.quarterRevenue || 0) <= 30) {
+    vatPayable = 0
+    plans = plans.filter((p) => p !== 'vatSmall')
+    planSet.delete('vatSmall')
+  }
+
+  // 应税所得额：研发费用加计扣除（合法筹划），每花1元研发税前扣除2元
+  let taxableProfit = state.balances['本年利润'] || 0
+  if (planSet.has('rndDeduction')) {
+    const rnd = state.balances['研发费用'] || 0
+    taxableProfit = +(taxableProfit - rnd).toFixed(2) // 加计100%即再扣一次研发费用
+  }
+  // 小型微利优惠：年应税所得≤300万按5%，否则25%（默认已按此规则，这里仅做展示标注）
+  const useSmallBenefit = planSet.has('smallBenefit') && taxableProfit > 0 && taxableProfit <= 300
+  const citRate = useSmallBenefit || (taxableProfit > 0 && taxableProfit <= 300) ? TAX.CIT_SMALL : TAX.CIT
+  const cit = +(Math.max(0, taxableProfit) * citRate).toFixed(2)
   const entries = []
   if (vatPayable > 0) {
     entries.push(...mk('应交税费-销项', state.vatOutput, '应交税费-未交增值税', state.vatOutput, '结转销项税额'))
@@ -182,12 +216,35 @@ export function settleTax(state) {
     entries.push(...mk('应交税费-未交增值税', vatPayable, '银行存款', vatPayable, '缴纳增值税'))
   }
   if (cit > 0) {
-    entries.push(...mk('所得税费用', cit, '应交税费-所得税', cit, '计提企业所得税'))
+    entries.push(...mk('所得税费用', cit, '应交税费-所得税', cit, '计提企业所得税' + (useSmallBenefit ? '（小微优惠）' : '')))
     entries.push(...mk('应交税费-所得税', cit, '银行存款', cit, '缴纳企业所得税'))
   }
-  applyBusiness(state, entries, '缴纳税金', state.month)
+  applyBusiness(state, entries, '缴纳税金' + (plans.length ? '（含合法筹划）' : ''), state.month)
   state.vatOutput = 0; state.vatInput = 0
-  return { vatPayable, cit, taxType: state.taxType, forced: state.forcedGeneral }
+  // 记录本季营收累计（用于小规模免税判定，下一季重置）
+  state.quarterRevenue = 0
+  return { vatPayable, cit, taxType: state.taxType, forced: state.forcedGeneral, plans: plans.filter((p) => planSet.has(p)) }
+}
+
+// 股东分红：从本年利润中按 ratio 计提应付股利（合法分配税后利润）
+export function declareDividend(state, ratio = 0.3) {
+  const profit = state.balances['本年利润'] || 0
+  if (profit <= 0) {
+    return { ok: false, amount: 0, msg: '本年无可供分配的利润，无法分红' }
+  }
+  const div = +((profit * ratio).toFixed(2))
+  if (div <= 0) return { ok: false, amount: 0, msg: '分红金额为0' }
+  // 分红需代扣个税（股息红利20%），演示简化为从现金代扣
+  const divTax = +(div * 0.2).toFixed(2)
+  const net = +(div - divTax).toFixed(2)
+  const entries = [
+    ...mk('应付股利', div, '银行存款', div, `宣告并支付股东分红${Math.round(ratio * 100)}%`),
+    ...mk('利润分配-应付股利', div, '应付股利', div, '结转应付股利'),
+    ...mk('应交税费-个人所得税', divTax, '银行存款', divTax, '代扣股息红利个税20%'),
+  ]
+  applyBusiness(state, entries, `股东分红（${Math.round(ratio * 100)}%）`, state.month)
+  state.totalDividend = +(state.totalDividend || 0) + net
+  return { ok: true, amount: net, gross: div, tax: divTax, msg: `分红 ${fmtW(net)}万（代扣个税 ${fmtW(divTax)}万）` }
 }
 
 function mk(d, da, c, ca, desc) {
