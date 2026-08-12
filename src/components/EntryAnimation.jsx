@@ -3,18 +3,16 @@ import { useState } from 'react'
 // 以动画形式演示会计分录的生成过程
 // entries: [{ side:'debit'|'credit', account, amount }]
 export default function EntryAnimation({ entries }) {
-  const [show, setShow] = useState(false)
+  const [show, setShow] = useState(true)
   const total = entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
 
   return (
     <div className="card">
       <div className="flex between center" style={{ marginBottom: 12 }}>
         <strong>📒 会计分录演示</strong>
-        {!show && (
-          <button className="btn ghost" style={{ width: 'auto', padding: '6px 14px', fontSize: 13 }} onClick={() => setShow(true)}>
-            ▶ 播放动画
-          </button>
-        )}
+        <button className="btn ghost" style={{ width: 'auto', padding: '6px 14px', fontSize: 13 }} onClick={() => setShow(true)}>
+          ↻ 重播
+        </button>
       </div>
 
       {show ? (
