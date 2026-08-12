@@ -403,7 +403,8 @@ export function isBankrupt(state) {
 
 export function buildReports(state) {
   const b = state.balances || {}
-  const g = (k) => +(b[k] || 0)        // 兜底：缺字段时按 0 处理，避免 undefined.toFixed 抛错
+  // 统一用 sumAccount 前缀汇总，兼容 "应交税费-销项" 这类带明细后缀的科目
+  const g = (k) => sumAccount(b, k)
   const assets = [
     { item: '货币资金', value: +(g('银行存款') + g('库存现金')).toFixed(2), side: 'asset' },
     { item: '应收账款', value: +g('应收账款').toFixed(2), side: 'asset' },
@@ -426,14 +427,23 @@ export function buildReports(state) {
   ]
   const balance = { type: 'balance', rows: [...assets, ...liabilities, ...equity] }
 
+  const revenue = +sumAccount(b, '主营业务收入').toFixed(2)
+  const cost = +sumAccount(b, '主营业务成本').toFixed(2)
+  const mgmt = +sumAccount(b, '管理费用').toFixed(2)
+  const fin = +sumAccount(b, '财务费用').toFixed(2)
+  const rd = +sumAccount(b, '研发费用').toFixed(2)
+  const tax = +sumAccount(b, '所得税费用').toFixed(2)
+  const netProfit = +(revenue - cost - mgmt - fin - rd - tax).toFixed(2)
   const income = {
     type: 'income',
     rows: [
-      { item: '营业收入', value: sumAccount(b, '主营业务收入') },
-      { item: '营业成本', value: -sumAccount(b, '主营业务成本') },
-      { item: '管理费用', value: -sumAccount(b, '管理费用') },
-      { item: '财务费用', value: -sumAccount(b, '财务费用') },
-      { item: '研发费用', value: -sumAccount(b, '研发费用') },
+      { item: '营业收入', value: revenue },
+      { item: '减：营业成本', value: -cost },
+      { item: '减：管理费用', value: -mgmt },
+      { item: '减：财务费用', value: -fin },
+      { item: '减：研发费用', value: -rd },
+      { item: '减：所得税费用', value: -tax },
+      { item: '净利润', value: netProfit, emphasize: true },
     ],
   }
   return { balance, income }

@@ -18,12 +18,16 @@ export default function ReportView({ report }) {
       const asset = report.rows.filter((r) => r.side === 'asset').reduce((s, r) => s + r.value, 0)
       const liability = report.rows.filter((r) => r.side === 'liability').reduce((s, r) => s + r.value, 0)
       const equity = report.rows.filter((r) => r.side === 'equity').reduce((s, r) => s + r.value, 0)
-      return { balanced: asset === liability + equity, totals: { asset, liability, equity, right: liability + equity } }
+      return { balanced: Math.abs(asset - (liability + equity)) < 0.05, totals: { asset, liability, equity, right: liability + equity } }
     }
     if (report.type === 'income') {
-      const rev = report.rows.filter((r) => r.value > 0 && /收入/.test(r.item)).reduce((s, r) => s + r.value, 0)
-      const exp = report.rows.filter((r) => r.value < 0 || /成本|费用|税金/.test(r.item)).reduce((s, r) => s + Math.abs(r.value), 0)
-      return { balanced: true, totals: { revenue: rev, expense: exp, profit: rev - exp } }
+      const net = report.rows.find((r) => r.item === '净利润')
+      const revenue = report.rows.find((r) => r.item === '营业收入')
+      const expense = report.rows.find((r) => r.item === '减：所得税费用')
+      // 净利润以 buildReports 计算值为准（已含收入-各项费用-所得税）
+      const profit = net ? net.value : 0
+      const rev = revenue ? revenue.value : 0
+      return { balanced: true, totals: { revenue: rev, expense: 0, profit } }
     }
     // cashflow
     const net = report.rows.reduce((s, r) => s + r.value, 0)
@@ -52,13 +56,7 @@ export default function ReportView({ report }) {
       {report.type === 'income' && (
         <div style={{ marginTop: 12 }}>
           <ReportTable title="" rows={report.rows} />
-          <div className="flex between center" style={{ marginTop: 8, fontWeight: 800 }}>
-            <span>营业收入</span><span className="v">{fmt(totals.revenue)}</span>
-          </div>
-          <div className="flex between center">
-            <span>营业支出</span><span className="v">-{fmt(totals.expense)}</span>
-          </div>
-          <div className="flex between center" style={{ fontWeight: 800, color: 'var(--accent-deep)' }}>
+          <div className="flex between center" style={{ marginTop: 8, fontWeight: 800, color: 'var(--accent-deep)' }}>
             <span>净利润</span><span className="v">{fmt(totals.profit)}</span>
           </div>
         </div>
@@ -96,7 +94,7 @@ function ReportTable({ title, rows }) {
     <div style={{ marginBottom: 6 }}>
       {title && <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--primary-deep)', margin: '6px 0' }}>{title}</div>}
       {rows.map((r, i) => (
-        <div key={i} className="flex between center" style={{ padding: '6px 0', borderBottom: '1px dashed var(--line)', fontSize: 14 }}>
+        <div key={i} className="flex between center" style={{ padding: r.emphasize ? '8px 0' : '6px 0', borderBottom: '1px dashed var(--line)', fontSize: r.emphasize ? 15 : 14, fontWeight: r.emphasize ? 800 : 400, color: r.emphasize ? 'var(--accent-deep)' : 'inherit' }}>
           <span>{r.item}</span>
           <span style={{ fontWeight: 700 }}>{fmt(r.value)}</span>
         </div>
