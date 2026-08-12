@@ -61,6 +61,12 @@ export function createCompany(companyId, diffId = 'easy') {
     penalty: 0, history: [], failed: false, failedReason: '', scale: 1,
     taxType: 'small', cumSales: 0, vatOutput: 0, vatInput: 0,
     forcedGeneral: false, boost: 0, choices: {},
+    // 持续经营（第七章）新增字段
+    year: 1,                       // 当前经营年份（1 起）
+    yearMood: 'normal',            // 本年行情：good 丰年 / bad 歉年 / normal
+    evilCount: 0,                  // 累计"邪道玩法"次数
+    evilEvents: [],                // 已埋下的雷：{atYear, type}（恶果延迟爆发）
+    skippedTaxMonths: 0,           // 累计未缴税月数（用于爆雷时补缴+罚款）
   }
   return state
 }
@@ -255,6 +261,15 @@ export function monthEnd(state, opts = {}) {
   state.balances['本年利润'] = +(rev - costs).toFixed(2)
 
   state.history.push({ month: m, cash: state.balances['银行存款'], profit: state.balances['本年利润'], revenue: rev, totalAssets: totalAssets(state.balances) })
+
+  // 持续经营：跨年（每年 1 月，且非第 1 月）重掷本年行情
+  if (m > 1 && m % 12 === 1) {
+    state.year = (state.year || 1) + 1
+    state.yearMood = rollYearMood()
+  }
+  // 持续经营：每年末检测邪道爆雷（延迟多年）
+  maybeEvilBlowup(state, m)
+
   return state
 }
 
@@ -364,4 +379,98 @@ export function buildReports(state) {
     ],
   }
   return { balance, income }
+}
+
+// ================= 第七章「持续经营」扩展 =================
+
+// 重掷本年行情：good 丰年 / bad 歉年 / normal
+export function rollYearMood() {
+  const r = Math.random()
+  if (r < 0.33) return 'good'
+  if (r < 0.66) return 'bad'
+  return 'normal'
+}
+export const MOOD_LABEL = { good: '🌟 丰年', bad: '🌧️ 歉年', normal: '⛅ 平常年' }
+
+// 计算本年行情对销售收入的系数
+export function moodFactor(state) {
+  return state.yearMood === 'good' ? 1.25 : state.yearMood === 'bad' ? 0.7 : 1.0
+}
+// 营销投入在低/高行情下的效率系数（丰年高效、歉年低效）
+export function investEff(state) {
+  return state.yearMood === 'good' ? 1.4 : state.yearMood === 'bad' ? 0.5 : 1.0
+}
+
+// 邪道玩法：记录一次违规操作（不发工资 / 不交税 / 虚开发票 等）
+// 返回提示文字。违规越多，后续爆雷概率越高；恶果会延迟数年后爆发。
+export function evilAct(state, kind) {
+  state.evilCount = (state.evilCount || 0) + 1
+  if (kind === 'salary') {
+    // 不发工资：省下工资成本但欠薪，埋雷
+    const due = +state.balances['应付职工薪酬'].toFixed(2)
+    // 不计入费用，直接记为欠薪（挂账）
+    return `😈 你选择拖欠工资。当月省下成本，但欠薪已记入「应付职工薪酬」，未来劳动稽查随时可能爆发。`
+  }
+  if (kind === 'tax') {
+    // 不交税：应交税费挂着不缴，累计 skippedTaxMonths
+    const due = +sumAccount(state.balances, '应交税费').toFixed(2)
+    state.skippedTaxMonths = (state.skippedTaxMonths || 0) + 1
+    return `😈 你选择偷逃税款。税款挂在「应交税费」，但税务稽查后将被追缴 + 0.5倍罚款，且越拖越狠。`
+  }
+  if (kind === 'fakeInvoice') {
+    // 虚开发票冲成本：虚增成本（少交税）但风险极高
+    return `😈 你选择虚开发票冲账。短期少缴税，但虚开发票是刑事红线，随时可能爆雷。`
+  }
+  return `😈 你选择了一条邪道。`
+}
+
+// 每年末（monthEnd 后）检测邪道爆雷：恶果延迟爆发，违规越多越易出事
+// 通过返回事件描述字符串（或 null）让 UI 提示；设置 state.failed 则破产
+export function maybeEvilBlowup(state, month) {
+  state.pendingBlowup = null
+  if ((state.evilCount || 0) === 0) return null
+  // 每年 12 月（month%12===0）才有概率稽查；违规越多概率越高
+  if (month % 12 !== 0) return null
+  const p = Math.min(0.85, 0.12 * (state.evilCount || 0)) // 单次爆雷概率随违规数上升
+  if (Math.random() > p) return null
+
+  const year = state.year
+  const taxDue = +sumAccount(state.balances, '应交税费').toFixed(2)
+  const wageDue = +state.balances['应付职工薪酬'].toFixed(2)
+  const events = []
+  let entries = []
+  // 补缴税款 + 0.5 倍罚款
+  if (taxDue > 0) {
+    const fine = +(taxDue * 0.5).toFixed(2)
+    entries.push(...mk('所得税费用', fine, '应交税费-滞纳金', fine, `税务稽查：追缴税款¥${taxDue}万 + 罚款¥${fine}万`))
+    entries.push(...mk('应交税费-滞纳金', fine, '银行存款', fine, '缴纳滞纳金罚款'))
+    events.push(`税务稽查：追缴税款¥${taxDue}万、罚款¥${fine}万`)
+  }
+  if (wageDue > 0) {
+    const fine = +(wageDue * 0.5).toFixed(2)
+    entries.push(...mk('管理费用', fine, '银行存款', fine, `劳动稽查：补发欠薪¥${wageDue}万 + 赔偿¥${fine}万`))
+    events.push(`劳动稽查：补发欠薪¥${wageDue}万、赔偿¥${fine}万`)
+  }
+  if (entries.length) {
+    applyBusiness(state, entries, `邪道爆雷（第${year}年）`, month)
+    state.skippedTaxMonths = 0
+  }
+  const msg = `💥 第${year}年爆雷！${events.join('；')}。邪道终有代价。`
+  state.pendingBlowup = msg
+  // 爆雷后若资不抵债则破产
+  if (isBankrupt(state)) {
+    state.failed = true
+    state.failedReason = msg
+  }
+  return msg
+}
+
+// 顶部指标栏用：负债合计 / 营业收入 / 本年行情 / 邪道计数
+export function liabilityTotal(state) {
+  return +sumAccount(state.balances, '短期借款') + sumAccount(state.balances, '应付账款') +
+    sumAccount(state.balances, '应付职工薪酬') + sumAccount(state.balances, '应付利息') +
+    sumAccount(state.balances, '应交税费')
+}
+export function operatingRevenue(state) {
+  return +sumAccount(state.balances, '主营业务收入')
 }

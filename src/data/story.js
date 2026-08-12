@@ -286,12 +286,12 @@ export const STORY = [
     loop: true,
     steps: [
       {
-        npc: '导师：开业只是开始！真正开公司要一个月接一个月地经营。每过一个月，你会经历"进货→卖货→发工资→月末结账"。准备好了就开始新的一月吧！',
+        npc: '导师：开业只是开始！真正开公司要一个月接一个月地经营。每过一个月，你会经历"进货→卖货→发工资→缴税→月末结账"。行情每年会变：丰年收入高、歉年收入低。准备好了就开始新的一月吧！',
         options: [
           {
             label: '▶️ 开始第 1 个经营月',
             action: { type: 'loopStart' },
-            teach: '循环经营：每个月都要做一遍完整业务，月末系统自动结账。坚持越久，越能体会"权责发生制"和"现金流"的较劲。',
+            teach: '循环经营：每个月都要做一遍完整业务，月末系统自动结账。坚持越久，越能体会"权责发生制"和"现金流"的较劲。丰年大胆投入、歉年保守经营。',
           },
         ],
       },
@@ -300,33 +300,68 @@ export const STORY = [
         options: [
           {
             label: '现金进货上架',
-            action: { type: 'purchase', amt: 2 },
+            action: { type: 'purchase' },
             teach: '进货：借 库存商品 / 贷 银行存款。商品在手里是资产，没卖出去不算费用。',
+            demoEntries: [{ side: 'debit', account: '库存商品', amount: 2 }, { side: 'credit', account: '银行存款', amount: 2 }],
           },
           {
             label: '赊账进货（形成应付账款）',
-            action: { type: 'purchaseCredit', amt: 2 },
+            action: { type: 'purchaseCredit' },
             teach: '赊购：借 库存商品 / 贷 应付账款。欠的钱是负债，记得下月有钱要还。',
+            demoEntries: [{ side: 'debit', account: '库存商品', amount: 2 }, { side: 'credit', account: '应付账款', amount: 2 }],
           },
         ],
       },
       {
-        npc: '顾客：老样子，来杯奶茶！扫码支付。',
+        npc: '顾客：老样子，来杯奶茶！扫码支付。本年行情会影响你的营业额——丰年门庭若市，歉年门可罗雀。',
         options: [
           {
             label: '卖货收款',
-            action: { type: 'sale', amt: 3, cost: 1.2 },
-            teach: '收款：借 银行存款 / 贷 主营业务收入、应交税费；系统自动结转成本：借 主营业务成本 / 贷 库存商品。',
+            action: { type: 'sale' },
+            teach: '收款：借 银行存款 / 贷 主营业务收入、应交税费；系统自动结转成本：借 主营业务成本 / 贷 库存商品。丰年营收会被放大，歉年缩水。',
+            demoEntries: [
+              { side: 'debit', account: '银行存款', amount: 3 },
+              { side: 'credit', account: '主营业务收入', amount: 3 },
+              { side: 'credit', account: '应交税费-销项', amount: 0.1 },
+              { side: 'debit', account: '主营业务成本', amount: 1.2 },
+              { side: 'credit', account: '库存商品', amount: 1.2 },
+            ],
           },
         ],
       },
       {
-        npc: 'HR：又到发工资的时候了，这是"应付职工薪酬"。',
+        npc: 'HR：又到发工资的时候了，这是"应付职工薪酬"。你也可以选择拖欠——但那是一条邪路。',
         options: [
           {
-            label: '计提并发放工资',
-            action: { type: 'salary', amt: 0.5 },
-            teach: '工资：借 管理费用-工资 / 贷 应付职工薪酬。先计提后发放，权责发生制。',
+            label: '计提并发放工资（正道）',
+            action: { type: 'salary' },
+            teach: '工资：借 管理费用-工资 / 贷 应付职工薪酬。先计提后发放，权责发生制。准时发工资，企业信誉才好。',
+            demoEntries: [{ side: 'debit', account: '管理费用-工资', amount: 0.5 }, { side: 'credit', account: '应付职工薪酬', amount: 0.5 }],
+          },
+          {
+            label: '😈 拖欠工资不发（邪道）',
+            action: { type: 'evilSalary' },
+            teach: '邪道：当月省下工资成本，但欠薪挂账，劳动稽查随时可能爆发，且邪道玩得越多越危险。',
+          },
+        ],
+      },
+      {
+        npc: '财务：本月有收入，要到税务局申报缴纳了。依法纳税是义务；也有人动歪脑筋……',
+        options: [
+          {
+            label: '依法申报纳税（正道）',
+            action: { type: 'tax' },
+            teach: '纳税：增值税（销项-进项）与企业所得税，借 应交税费、所得税费用 / 贷 银行存款。完税一身轻。',
+          },
+          {
+            label: '😈 偷逃税款（邪道）',
+            action: { type: 'evilTax' },
+            teach: '邪道：税款挂着不缴，短期省现金，但税务稽查会追缴+罚款，越拖越狠，且可能多年后才爆雷。',
+          },
+          {
+            label: '😈 虚开发票冲成本（邪道）',
+            action: { type: 'evilFakeInvoice' },
+            teach: '邪道：虚增成本少缴税，是刑事红线，随时可能爆雷。邪道越多，出事概率越高。',
           },
         ],
       },
@@ -336,17 +371,17 @@ export const STORY = [
           {
             label: '执行月末结账',
             action: { type: 'monthEnd' },
-            teach: '月末自动：计提折旧、借款计息、摊销预付房租。费用按受益期确认，不看出没出现金。',
+            teach: '月末自动：计提折旧、借款计息、摊销预付房租。费用按受益期确认，不看出没出现金。每年末会检测邪道是否爆雷。',
           },
         ],
       },
       {
-        npc: '导师：这个月经营结束啦。是咬牙继续开下去，还是见好就收、结业清算？撑得越久规模越大，但现金一旦为负就破产哦。',
+        npc: '导师：这个月经营结束啦。是咬牙继续开下去，还是见好就收、结业清算？撑得越久规模越大，但现金一旦为负就破产。本年行情也有可能切换（丰年↔歉年）。',
         options: [
           {
             label: '💪 继续经营下一个月',
             action: { type: 'loopContinue' },
-            teach: '继续经营：时间往前走一个月，重复"进-销-薪-结"。撑得越久，累计利润和规模越可观，但现金一旦为负就破产。',
+            teach: '继续经营：时间往前走一个月，重复"进-销-薪-税-结"。撑得越久，累计利润和规模越可观，但现金一旦为负就破产。每年行情会重掷。',
           },
           {
             label: '🏁 结业清算（出最终报表）',

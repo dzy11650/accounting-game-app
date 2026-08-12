@@ -8,6 +8,7 @@ import {
   recordVoucher, settleErrors, applyAdjust, loseLife, DIFFICULTY,
   applyFunding, applyExpand, applyTaxType, vatOnSale, vatOnPurchase,
   maybeForceGeneral, applyInvest, settleTax, TAX,
+  liabilityTotal, operatingRevenue, MOOD_LABEL, rollYearMood, evilAct,
 } from '../lib/engine.js'
 import EntryAnimation from '../components/EntryAnimation.jsx'
 import Toast from '../components/Toast.jsx'
@@ -150,8 +151,9 @@ function Game() {
     const eco = co.economics
     const scale = s.scale || 1
     const boost = 1 + (s.boost || 0)
+    const mf = (a.type === 'sale') ? moodFactor(s) : 1 // 销售受本年行情影响
     if (a.type === 'sale' || a.type === 'purchase' || a.type === 'purchaseCredit') {
-      const base = eco.dealSize * scale * boost
+      const base = eco.dealSize * scale * boost * mf
       const amount = diff.randFund ? +(base * (0.8 + Math.random() * 0.5)).toFixed(1) : +base.toFixed(1)
       const rate = s.taxType === 'general' ? TAX.VAT_GENERAL : TAX.VAT_SMALL
       return { type: a.type, amount, rate, vat: +(amount * rate).toFixed(2), cost: +(amount * (1 - eco.margin)).toFixed(1) }
@@ -217,7 +219,7 @@ function Game() {
       entries = res.entries; expected = res.entries
       s.balances['库存商品'] += a; s.balances['应付账款'] += a
     } else if (action.type === 'sale') {
-      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost)
+      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost * moodFactor(s))
       const cost = +(a * (1 - eco.margin)).toFixed(1)
       const res = vatOnSale(s, a, co.revenueAccount)
       const forced = maybeForceGeneral(s)
@@ -273,11 +275,36 @@ function Game() {
       setToast(`投入决策（${a.kind}）：${a.level === 'high' ? '高投入→后续营收+25%，但前置营销成本已发生' : '低投入→营收小幅提升，无前置成本'}`)
       return { handled: true, selfContained: false }
     }
+    // 第七章邪道玩法：不发工资 / 不交税 / 虚开发票
+    if (a.type === 'evilSalary') {
+      // 不发工资：当月不计提工资费用（省成本），但欠薪挂账，埋下劳动稽查风险
+      const due = +(eco.salary * (s.scale || 1)).toFixed(1)
+      s.balances['应付职工薪酬'] = +(s.balances['应付职工薪酬'] || 0 + due).toFixed(2)
+      const msg = evilAct(s, 'salary')
+      setToast(msg)
+      return { handled: true, selfContained: false }
+    }
+    if (a.type === 'evilTax') {
+      // 不交税：应交税费挂着不缴（state.skippedTaxMonths 累计），埋下税务稽查风险
+      const msg = evilAct(s, 'tax')
+      setToast(msg)
+      return { handled: true, selfContained: false }
+    }
+    if (a.type === 'evilFakeInvoice') {
+      // 虚开发票冲成本：短期虚增成本少缴税，刑事红线
+      const msg = evilAct(s, 'fakeInvoice')
+      setToast(msg)
+      return { handled: true, selfContained: false }
+    }
     // 第七章持续经营：开始 / 继续下一个月（回到本章"进货"步，重复经营）
     if (a.type === 'loopStart' || a.type === 'loopContinue') {
+      if (a.type === 'loopStart') {
+        s.year = 1
+        s.yearMood = rollYearMood() // 第 1 年行情开局即定
+      }
       const back = 1 // 回到"进货"步（step1），重复 进→销→薪→结
       setSim(s); setStepIdx(back); persist(s, coId, diffId, chapterIdx, back, false)
-      setToast(a.type === 'loopStart' ? '🚀 开始持续经营！' : `⏭️ 进入第 ${s.month} 月经营`)
+      setToast(a.type === 'loopStart' ? `🚀 开始持续经营！本年行情：${MOOD_LABEL[s.yearMood]}（第1年）` : `⏭️ 进入第 ${s.month} 月经营（${MOOD_LABEL[s.yearMood] || '⛅'} 第${s.year || 1}年）`)
       return { handled: true, selfContained: true }
     }
     // 结业清算：出最终成绩单
@@ -366,11 +393,15 @@ function Game() {
     const settle = settleErrors(s)
     if (settle.fatal) { fail(s, s.failedReason); return }
     setSim(s)
-    setToast(`第${s.month}月结账：折旧+计息${settle.penalized ? `，罚款¥${settle.penalized}万` : ''}`)
+    let msg = `第${s.month}月结账：折旧+计息${settle.penalized ? `，罚款¥${settle.penalized}万` : ''}`
     if (settle.tasks && settle.tasks.length) {
       setAdjustTasks(settle.tasks)
-      setToast('⚠️ 本月有凭证记错，需做调整分录修正！')
+      msg += '；⚠️ 本月有凭证记错，需做调整分录修正！'
     }
+    if (s.pendingBlowup) msg += `；${s.pendingBlowup}`
+    setToast(msg)
+    if (s.pendingBlowup) s.pendingBlowup = null
+    if (s.failed) { fail(s, s.failedReason); return }
     if (isBankrupt(s)) { fail(s, '资不抵债，公司破产！'); return }
     nextStep()
   }
@@ -559,6 +590,17 @@ function Game() {
           <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>📈 利润</span><span className="v">¥{fmtW(sim.balances['本年利润'])}万</span></div>
           <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>❤️ 容错</span><span className="v">{sim.lives}</span></div>
         </div>
+        <div className="flex gap8 mt8">
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🧾 营收</span><span className="v">¥{fmtW(operatingRevenue(sim))}万</span></div>
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🏦 负债</span><span className="v">¥{fmtW(liabilityTotal(sim))}万</span></div>
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>📏 规模</span><span className="v">×{fmtW(sim.scale || 1)}</span></div>
+        </div>
+        {(chapter.loop) && (
+          <div className="flex gap8 mt8">
+            <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🌤️ 行情</span><span className="v">{MOOD_LABEL[sim.yearMood] || '⛅ 平常年'}（第{sim.year || 1}年）</span></div>
+            <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>😈 邪道</span><span className="v">{sim.evilCount || 0} 次</span></div>
+          </div>
+        )}
       </div>
 
       <div className="card" style={{ background: '#FFFDF8', borderLeft: '5px solid var(--primary)' }}>
@@ -589,9 +631,16 @@ function Game() {
         <div className="card">
           {step?.options?.length ? (
             step.options.map((opt, i) => (
-              <div key={i} className="option" style={{ cursor: 'pointer' }} onClick={() => choose(opt)}>
-                <span className="opt-key">{i + 1}</span><span>{opt.label}</span>
-                {opt.recommended && !diff.selfEntry && <span className="chip" style={{ marginLeft: 'auto', background: 'var(--gold)', color: '#fff' }}>💡推荐</span>}
+              <div key={i}>
+                <div className="option" style={{ cursor: 'pointer' }} onClick={() => choose(opt)}>
+                  <span className="opt-key">{i + 1}</span><span>{opt.label}</span>
+                  {opt.recommended && !diff.selfEntry && <span className="chip" style={{ marginLeft: 'auto', background: 'var(--gold)', color: '#fff' }}>💡推荐</span>}
+                </div>
+                {diff.selfEntry === false && opt.demoEntries && (
+                  <div style={{ fontSize: 11, color: 'var(--accent-deep)', background: '#E9F8F6', padding: '6px 10px', borderRadius: 8, margin: '0 0 8px 28px', lineHeight: 1.6 }}>
+                    📖 演示分录：{opt.demoEntries.map((e, k) => `${e.side === 'debit' ? '借' : '贷'} ${e.account} ¥${e.amount}万`).join('，')}
+                  </div>
+                )}
               </div>
             ))
           ) : (
