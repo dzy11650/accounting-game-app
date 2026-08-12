@@ -8,7 +8,7 @@ import {
   recordVoucher, settleErrors, applyAdjust, loseLife, DIFFICULTY,
   applyFunding, applyExpand, applyTaxType, vatOnSale, vatOnPurchase,
   maybeForceGeneral, applyInvest, settleTax, declareDividend, TAX, TAX_PLANS,
-  liabilityTotal, operatingRevenue, MOOD_LABEL, rollYearMood, evilAct, fmtW,
+  liabilityTotal, operatingRevenue, MOOD_LABEL, rollYearMood, moodFactor, evilAct, fmtW,
 } from '../lib/engine.js'
 import EntryAnimation from '../components/EntryAnimation.jsx'
 import Toast from '../components/Toast.jsx'
