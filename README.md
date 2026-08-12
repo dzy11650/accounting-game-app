@@ -100,15 +100,22 @@ cd android
 
 | 平台 | 文件 | 大小 | 说明 |
 | --- | --- | --- | --- |
-| 🤖 安卓 | [app-release-2.0.0.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.0/app-release-2.0.0.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
-| 🪟 Windows（Electron 便携版） | [kjxdj-electron-2.0.0-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.0/kjxdj-electron-2.0.0-portable.exe) | 81 MB | 双击即用，免安装 |
-| 🪟 Windows（Tauri 版） | [kjxdj-tauri-2.0.0.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.0/kjxdj-tauri-2.0.0.exe) | 3.9 MB | 体积更小、启动更快，双击即用（已修复旧版双击报 localhost 拒绝连接的问题） |
-| 🪟 Windows（Tauri 安装版） | [kjxdj-tauri-2.0.0-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.0/kjxdj-tauri-2.0.0-setup.exe) | 1.2 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
+| 🤖 安卓 | [app-release-2.0.1.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.1/app-release-2.0.1.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
+| 🪟 Windows（Electron 便携版） | [kjxdj-electron-2.0.1-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.1/kjxdj-electron-2.0.1-portable.exe) | 81 MB | 双击即用，免安装 |
+| 🪟 Windows（Tauri 版） | [kjxdj-tauri-2.0.1.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.1/kjxdj-tauri-2.0.1.exe) | 4.3 MB | 体积更小、启动更快，双击即用 |
+| 🪟 Windows（Tauri 安装版） | [kjxdj-tauri-2.0.1-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.1/kjxdj-tauri-2.0.1-setup.exe) | 1.2 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
 
-> 所有安装包发布于 Release **[v2.0.0](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v2.0.0)**。请下载本页最新上传的 v2.0.0 安装包（已修复账期与报税结算问题），旧版账期功能不可用。
+> 所有安装包发布于 Release **[v2.0.1](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v2.0.1)**。v2.0.0 已被清理，请下载 v2.0.1（含 Tauri 启动修复与会计引擎校验修复）。
 > 文件名为英文，以避免中文文件名在部分系统下显示异常。
 >
 > ⚠️ Windows 安装包暂未做代码签名，首次运行若遇 SmartScreen 提示「请在打开前确保信任」，请点击「更多信息」→「仍要运行」即可正常启动（并非病毒，详见 Release 说明）。
+
+### v2.0.1 修复内容
+- 🐛 **修复 Tauri 桌面启动运行时 `moodFactor is not defined` 报错**：旧 v2.0.0 Tauri 包内含陈旧 dist 资源导致选择业务时崩溃，已重新构建并上传 2.0.1。
+- 🐛 修复：赊购账期（应付账款）未入账导致偿还时现金被错误扣减的问题。
+- 🐛 修复：报税后企业所得税未结转至本年利润导致报表不平的问题。
+- 🐛 修复：`trackChoice` 未返回新 state 导致部分交互状态不刷新。
+- 🧹 清理：删除 v2.0.0 release 中的重复/损坏产物，统一下载入口。
 
 ### v2.0.0 更新内容（游戏性大升级）
 - 📥 **主动接单系统**：持续经营章节改为「接订单」模式，每月出现多张订单（金额/毛利率/账期不同），玩家可挑着接、可赊销，把被动经营变主动决策。
