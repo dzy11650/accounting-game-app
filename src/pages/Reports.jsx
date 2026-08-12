@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { COMPANIES } from '../data/companies.js'
 import { createCompany, applyBusiness, monthEnd, buildReports, applyFunding, applyTaxType, vatOnSale, vatOnPurchase, settleTax, DIFFICULTY } from '../lib/engine.js'
 import ReportView from '../components/ReportView.jsx'
@@ -8,6 +8,8 @@ export default function Reports() {
   const [coId, setCoId] = useState('shop')
   const [diffId, setDiffId] = useState('easy')
   const [report, setReport] = useState(null)
+  const [reportReady, setReportReady] = useState(false)
+  const reportRef = useRef(null)
 
   const generate = () => {
     const co = COMPANIES.find((c) => c.id === coId)
@@ -31,6 +33,7 @@ export default function Reports() {
     }
     settleTax(s)
     setReport(buildReports(s))
+    setReportReady(true)
   }
 
   return (
@@ -48,14 +51,14 @@ export default function Reports() {
             <button key={d.id} className="btn ghost" style={{ width: 'auto', padding: '8px 12px' }} onClick={() => setDiffId(d.id)}>{d.name}</button>
           ))}
         </div>
-        <button className="btn mt12" onClick={generate}>🪄 生成报表</button>
+        <button className="btn mt12" onClick={() => { generate(); setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }}>🪄 {reportReady ? '重新生成报表' : '生成报表'}</button>
       </div>
 
       {report ? (
-        <>
+        <div ref={reportRef}>
           <ReportView report={report.balance} />
           <ReportView report={report.income} />
-        </>
+        </div>
       ) : (
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-soft)' }}>
           点击「生成报表」查看资产负债表与利润表

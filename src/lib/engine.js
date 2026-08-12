@@ -402,26 +402,27 @@ export function isBankrupt(state) {
 }
 
 export function buildReports(state) {
-  const b = state.balances
+  const b = state.balances || {}
+  const g = (k) => +(b[k] || 0)        // 兜底：缺字段时按 0 处理，避免 undefined.toFixed 抛错
   const assets = [
-    { item: '货币资金', value: +(b['银行存款'] + b['库存现金']).toFixed(2), side: 'asset' },
-    { item: '应收账款', value: +b['应收账款'].toFixed(2), side: 'asset' },
-    { item: '存货(含原材料/库存/在产)', value: +(b['原材料'] + b['库存商品'] + b['生产成本']).toFixed(2), side: 'asset' },
-    { item: '预付账款', value: +b['预付账款'].toFixed(2), side: 'asset' },
-    { item: '固定资产(净值)', value: +(b['固定资产'] - b['累计折旧']).toFixed(2), side: 'asset' },
-    { item: '无形资产(净值)', value: +(b['无形资产'] - b['累计摊销']).toFixed(2), side: 'asset' },
-    { item: '研发支出', value: +b['研发支出'].toFixed(2), side: 'asset' },
+    { item: '货币资金', value: +(g('银行存款') + g('库存现金')).toFixed(2), side: 'asset' },
+    { item: '应收账款', value: +g('应收账款').toFixed(2), side: 'asset' },
+    { item: '存货(含原材料/库存/在产)', value: +(g('原材料') + g('库存商品') + g('生产成本')).toFixed(2), side: 'asset' },
+    { item: '预付账款', value: +g('预付账款').toFixed(2), side: 'asset' },
+    { item: '固定资产(净值)', value: +(g('固定资产') - g('累计折旧')).toFixed(2), side: 'asset' },
+    { item: '无形资产(净值)', value: +(g('无形资产') - g('累计摊销')).toFixed(2), side: 'asset' },
+    { item: '研发支出', value: +g('研发支出').toFixed(2), side: 'asset' },
   ]
   const liabilities = [
-    { item: '短期借款', value: +b['短期借款'].toFixed(2), side: 'liability' },
-    { item: '应付账款', value: +b['应付账款'].toFixed(2), side: 'liability' },
-    { item: '应付职工薪酬', value: +b['应付职工薪酬'].toFixed(2), side: 'liability' },
-    { item: '应付利息', value: +b['应付利息'].toFixed(2), side: 'liability' },
-    { item: '应交税费', value: +b['应交税费'].toFixed(2), side: 'liability' },
+    { item: '短期借款', value: +g('短期借款').toFixed(2), side: 'liability' },
+    { item: '应付账款', value: +g('应付账款').toFixed(2), side: 'liability' },
+    { item: '应付职工薪酬', value: +g('应付职工薪酬').toFixed(2), side: 'liability' },
+    { item: '应付利息', value: +g('应付利息').toFixed(2), side: 'liability' },
+    { item: '应交税费', value: +g('应交税费').toFixed(2), side: 'liability' },
   ]
   const equity = [
-    { item: '实收资本/股本', value: +(b['实收资本'] + b['股本']).toFixed(2), side: 'equity' },
-    { item: '本年利润', value: +b['本年利润'].toFixed(2), side: 'equity' },
+    { item: '实收资本/股本', value: +(g('实收资本') + g('股本')).toFixed(2), side: 'equity' },
+    { item: '本年利润', value: +g('本年利润').toFixed(2), side: 'equity' },
   ]
   const balance = { type: 'balance', rows: [...assets, ...liabilities, ...equity] }
 

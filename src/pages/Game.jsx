@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUser } from '../store/UserContext.jsx'
 import { COMPANIES } from '../data/companies.js'
@@ -91,6 +91,9 @@ function Game() {
   const [brief, setBrief] = useState(null)
   // 点击/交互期运行时错误（便于定位"点击后白屏"等异常）
   const [runtimeError, setRuntimeError] = useState(null)
+  // 报表区引用与"已生成"状态：点击生成后滚动到报表卡片，给出明确反馈
+  const reportRef = useRef(null)
+  const [reportReady, setReportReady] = useState(false)
 
   const chapter = STORY[chapterIdx]
   const step = chapter?.steps[stepIdx]
@@ -714,8 +717,11 @@ function Game() {
       {lastEntries && <EntryAnimation entries={lastEntries} />}
 
       {reports && (
-        <div className="card" style={{ background: '#FFFDF8' }}>
+        <div ref={reportRef} className="card" style={{ background: '#FFFDF8' }}>
           <div style={{ fontWeight: 800, marginBottom: 8 }}>📊 当前报表（实时）</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent-deep)', marginBottom: 8 }}>
+            ✅ 报表已生成，可对照检查借贷逻辑（资产=负债+权益 / 收入-费用=利润）
+          </div>
           <ReportLite report={reports.balance} />
           <ReportLite report={reports.income} />
         </div>
@@ -731,7 +737,17 @@ function Game() {
       ))}
 
       <button className="btn ghost mt12" onClick={restart}>🔄 重开一家</button>
-      <button className="btn ghost mt12" onClick={() => { const r = buildReports(sim); setReports(r) }}>📊 生成报表</button>
+      <button className="btn ghost mt12" onClick={() => {
+        try {
+          const r = buildReports(sim)
+          setReports(r)
+          setReportReady(true)
+          // 生成后自动滚动到报表卡片，确保用户立刻看到反馈
+          setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+        } catch (err) {
+          setRuntimeError(err)
+        }
+      }}>📊 {reportReady ? '重新生成报表' : '生成报表'}</button>
     </div>
   )
 }
