@@ -102,7 +102,8 @@ cd android
 | --- | --- | --- | --- |
 | 🤖 安卓 | [app-release-1.0.2.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/app-release-1.0.2.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
 | 🪟 Windows（Electron 便携版） | [kjxdj-electron-1.0.2-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/kjxdj-electron-1.0.2-portable.exe) | 81 MB | 双击即用，免安装 |
-| 🪟 Windows（Tauri 版） | [kjxdj-tauri-1.0.2.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/kjxdj-tauri-1.0.2.exe) | 4.1 MB | 体积更小、启动更快，双击即用 |
+| 🪟 Windows（Tauri 版） | [kjxdj-tauri-1.0.2.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/kjxdj-tauri-1.0.2.exe) | 3.9 MB | 体积更小、启动更快，双击即用（已修复旧版双击报 localhost 拒绝连接的问题） |
+| 🪟 Windows（Tauri 安装版） | [kjxdj-tauri-1.0.2-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/kjxdj-tauri-1.0.2-setup.exe) | 1.2 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
 
 > 所有安装包发布于 Release **[v1.0.2](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v1.0.2)**。
 > 文件名为英文，以避免中文文件名在部分系统下显示异常。
