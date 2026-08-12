@@ -112,8 +112,8 @@ cd android
 如果这个项目对你有帮助，欢迎请作者喝杯奶茶 ☕：
 
 <div align="center">
-  <img src="/wechat-pay.jpg" width="220" alt="微信收款码" />
-  <img src="/alipay-pay.jpg" width="220" alt="支付宝收款码" />
+  <img src="public/wechat-pay.jpg" width="220" alt="微信收款码" />
+  <img src="public/alipay-pay.jpg" width="220" alt="支付宝收款码" />
   <p><sub>扫码即可赞助，支持微信 / 支付宝（信用卡、花呗可用）。</sub></p>
 </div>
 
