@@ -13,6 +13,7 @@ const defaultState = {
   badges: [], // badge ids earned
   gameBestProfit: 0,
   companiesRun: [], // 已体验的公司类型 id
+  runHistory: [], // H: 每局通关记录 { coId, coName, profit, stars, months, date }
 }
 
 function reducer(state, action) {
@@ -46,6 +47,18 @@ function reducer(state, action) {
     case 'COMPANY_RUN': {
       if (state.companiesRun.includes(action.id)) return state
       return { ...state, companiesRun: [...state.companiesRun, action.id] }
+    }
+    case 'RECORD_RUN': {
+      // H: 记录一局通关成绩（用于本地排行榜与多公司对比）
+      const run = {
+        coId: action.coId,
+        coName: action.coName,
+        profit: +(action.profit || 0).toFixed(2),
+        stars: action.stars || 0,
+        months: action.months || 0,
+        date: action.date || new Date().toISOString().slice(0, 10),
+      }
+      return { ...state, runHistory: [...state.runHistory, run] }
     }
     case 'SET_NAME':
       return { ...state, name: action.name, avatar: action.avatar || state.avatar }

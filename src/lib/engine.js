@@ -84,6 +84,14 @@ export function createCompany(companyId, diffId = 'easy') {
     totalDividend: 0,              // 累计已分红净额（股东实得）
     quarterRevenue: 0,             // 本季度累计营收（用于小规模免税判定）
     usedTaxPlans: [],              // 已采用的合法筹划手段 id 列表
+    // 游戏性增强字段
+    receivables: [],               // 应收账款（赊销，F）
+    payablesDue: [],               // 到期应付账款（F）
+    reachedMilestones: [],         // 已达成里程碑 id（D）
+    choiceLog: [],                 // 决策记录（B）
+    eventBuff: {},                 // 当月随机事件数值缓冲（C）
+    monthOrders: [],               // 当月订单（E）
+    lastEvent: null,               // 最近一次随机事件（C）
   }
   return state
 }
@@ -217,6 +225,8 @@ export function settleTax(state, plans = []) {
   }
   if (cit > 0) {
     entries.push(...mk('所得税费用', cit, '应交税费-所得税', cit, '计提企业所得税' + (useSmallBenefit ? '（小微优惠）' : '')))
+    // 结账后调用：所得税费用需立即结转至本年利润，否则本年利润虚高、恒等式失衡
+    entries.push(...mk('本年利润', cit, '所得税费用', cit, '结转所得税费用至本年利润'))
     entries.push(...mk('应交税费-所得税', cit, '银行存款', cit, '缴纳企业所得税'))
   }
   applyBusiness(state, entries, '缴纳税金' + (plans.length ? '（含合法筹划）' : ''), state.month)
@@ -311,11 +321,16 @@ export function monthEnd(state, opts = {}) {
   }
   applyBusiness(state, newEntries, `第${m}月末结账`, m)
 
-  // 结转损益
+  // 结转损益：将本月损益科目余额转入「本年利润」，并清零损益科目（避免重复累计）
   const rev = sumAccount(state.balances, '主营业务收入')
   const costs = sumAccount(state.balances, '主营业务成本') + sumAccount(state.balances, '管理费用') +
     sumAccount(state.balances, '财务费用') + sumAccount(state.balances, '研发费用') + sumAccount(state.balances, '所得税费用')
-  state.balances['本年利润'] = +(rev - costs).toFixed(2)
+  const monthProfit = +(rev - costs).toFixed(2)
+  state.balances['本年利润'] = +((state.balances['本年利润'] || 0) + monthProfit).toFixed(2)
+  // 清零本月损益科目（下月从 0 开始累计）。注意：应交税费-销项/进项属负债/资产，由 settleTax 正常缴纳，不可在此清零
+  for (const k of ['主营业务收入', '主营业务成本', '管理费用', '财务费用', '研发费用', '所得税费用', '管理费用-折旧', '管理费用-房租', '管理费用-稽查', '管理费用-招聘', '财务费用-利息', '营业外收入-补贴']) {
+    if (state.balances[k] != null) state.balances[k] = 0
+  }
 
   state.history.push({ month: m, cash: state.balances['银行存款'], profit: state.balances['本年利润'], revenue: rev, totalAssets: totalAssets(state.balances) })
 
@@ -541,4 +556,263 @@ export function liabilityTotal(state) {
 }
 export function operatingRevenue(state) {
   return +sumAccount(state.balances, '主营业务收入')
+}
+
+// ================= 游戏性增强：订单 / 随机事件 / 应付账款账期 / 决策后果 / 评分 =================
+
+// ---- E. 订单系统：玩家主动"接单"，影响当月销售与赊销 ----
+// 生成一张订单：金额、毛利率、账期（0=现结，N=赊销N月后收）
+export function genOrder(state, rng = Math.random) {
+  const co = state.co
+  const base = co.economics.dealSize * (state.scale || 1)
+  const sizeRoll = 0.6 + rng() * 0.9                 // 0.6~1.5 倍基准
+  const amount = +(base * sizeRoll * moodFactor(state)).toFixed(2)
+  const margin = +(co.economics.margin * (0.7 + rng() * 0.6)).toFixed(2) // 毛利率波动
+  const creditRoll = rng()
+  const credit = creditRoll < 0.45 ? 0 : creditRoll < 0.8 ? (rng() < 0.5 ? 1 : 2) : 3
+  const customers = ['便利店', '写字楼团购', '直播达人', '老客户返单', '政府定点', '连锁商超']
+  const customer = customers[Math.floor(rng() * customers.length)]
+  return {
+    id: 'o' + Date.now() + Math.floor(rng() * 1000),
+    customer, amount, margin, credit,
+    // 预计毛利（用于订单卡片展示与玩家权衡）
+    profit: +(amount * margin).toFixed(2),
+    desc: `${customer} 订单：¥${amount}万 · 毛利${Math.round(margin * 100)}% · ${credit === 0 ? '现结' : '赊销' + credit + '月'}`,
+  }
+}
+
+// 玩家接单：生成销售分录 + 结转成本，赊销挂应收账款
+export function fulfillOrder(state, order) {
+  const co = state.co
+  const saleAmt = order.amount
+  const costAmt = +(saleAmt * (1 - order.margin)).toFixed(2)
+  const vat = vatOnSale(state, saleAmt, co.revenueAccount) // 默认借银行存款
+  let entries = vat.entries.map((e) => ({ ...e }))
+  if (order.credit > 0) {
+    // 赊销：把"银行存款"替换为"应收账款"
+    entries = entries.map((e) =>
+      e.account === '银行存款' ? { ...e, account: '应收账款' } : e
+    )
+  }
+  applyBusiness(state, entries, `接单销售：${order.customer}`)
+  // 结转成本
+  applyBusiness(state, co.costOfSale(costAmt), `结转成本：${order.customer}`)
+  // 赊销账期登记（到期自动回款）
+  if (order.credit > 0) {
+    state.receivables = state.receivables || []
+    state.receivables.push({ due: state.month + order.credit, amount: +(saleAmt + vat.vat).toFixed(2) })
+  }
+  state.choices = state.choices || {}
+  state.choices.ordersFulfilled = (state.choices.ordersFulfilled || 0) + 1
+  return state
+}
+
+// ---- F. 应付账款账期：赊购形成的应付账款，到期后自动从现金扣还 ----
+// monthEnd 内调用：到期应付账款转银行存款扣减
+export function settleDuePayables(state) {
+  const due = state.payablesDue || []
+  if (!due.length) return []
+  const now = state.month
+  const triggered = due.filter((p) => p.due <= now)
+  if (!triggered.length) return []
+  const total = +(triggered.reduce((s, p) => s + p.amount, 0)).toFixed(2)
+  applyBusiness(state, mk('应付账款', total, '银行存款', total, `应付账款到期偿还`), state.month)
+  state.payablesDue = due.filter((p) => p.due > now)
+  return triggered.map((p) => ({ ...p, amount: +p.amount.toFixed(2) }))
+}
+
+// 赊购扩展：在 vatOnPurchase 基础上登记账期并实际记账
+export function purchaseOnCreditWithTerm(state, purAmt, term = 3) {
+  const r = vatOnPurchase(state, purAmt, true)
+  applyBusiness(state, r.entries, `赊购入库(账期${term}月)`, state.month)
+  state.payablesDue = state.payablesDue || []
+  state.payablesDue.push({ due: state.month + term, amount: +(purAmt + r.vat).toFixed(2) })
+  return r
+}
+
+// 赊销回款：到期应收账款收回现金
+export function collectReceivables(state) {
+  const rec = state.receivables || []
+  if (!rec.length) return []
+  const now = state.month
+  const triggered = rec.filter((p) => p.due <= now)
+  if (!triggered.length) return []
+  const total = +(triggered.reduce((s, p) => s + p.amount, 0)).toFixed(2)
+  applyBusiness(state, mk('银行存款', total, '应收账款', total, `应收账款到期收回`), state.month)
+  state.receivables = rec.filter((p) => p.due > now)
+  return triggered.map((p) => ({ ...p, amount: +p.amount.toFixed(2) }))
+}
+
+// ---- C. 随机事件：打破第七章的重复枯燥 ----
+// 事件只影响当月 economics（成本/营收系数/费用），不直接破坏会计恒等式
+export function rollRandomEvent(state, rng = Math.random) {
+  // 每 3 个月左右触发一次，避免过密
+  if (state.month % 3 !== 0) { return null }
+  // 进入新月前，清空上一个月的临时事件增益（避免永久叠加）
+  state.eventBuff = {}
+  const library = RANDOM_EVENTS
+  if (!library.length) return null
+  const pick = library[Math.floor(rng() * library.length)]
+  // 应用事件数值效果（作用于 choices 临时系数，monthEnd 时读取）
+  state.eventBuff = state.eventBuff || {}
+  if (pick.effect) pick.effect(state)
+  const ev = { id: pick.id, title: pick.title, emoji: pick.emoji, desc: pick.desc, tone: pick.tone, month: state.month }
+  state.lastEvent = ev
+  return ev
+}
+
+// 事件类型库：tone: good / bad / neutral
+export const RANDOM_EVENTS = [
+  {
+    id: 'materialSpike', title: '原料涨价', emoji: '📈', tone: 'bad',
+    desc: '上游原料普涨，本月采购成本上浮 20%。',
+    effect: (s) => { s.eventBuff.purchaseUp = (s.eventBuff.purchaseUp || 0) + 0.2 },
+  },
+  {
+    id: 'viral', title: '网红打卡爆单', emoji: '🔥', tone: 'good',
+    desc: '你家店被网红带火，本月销售收入 +35%！',
+    effect: (s) => { s.eventBuff.saleUp = (s.eventBuff.saleUp || 0) + 0.35 },
+  },
+  {
+    id: 'inspection', title: '突击税务检查', emoji: '🚨', tone: 'bad',
+    desc: '税务部门突击检查，本月需补缴一笔合规费用 ¥0.5万。',
+    effect: (s) => { applyBusiness(s, mk('管理费用-稽查', 0.5, '银行存款', 0.5, '突击检查合规费'), s.month) },
+  },
+  {
+    id: 'staffLeave', title: '骨干离职', emoji: '😵', tone: 'bad',
+    desc: '一名骨干突然离职，招聘重置成本 ¥0.8万，本月效率下降。',
+    effect: (s) => {
+      applyBusiness(s, mk('管理费用-招聘', 0.8, '银行存款', 0.8, '骨干离职重置成本'), s.month)
+      s.eventBuff.saleUp = (s.eventBuff.saleUp || 0) - 0.1
+    },
+  },
+  {
+    id: 'groupOrder', title: '大客户团购', emoji: '🤝', tone: 'good',
+    desc: '一家大企业抛来团购大单，本月销售收入 +25%。',
+    effect: (s) => { s.eventBuff.saleUp = (s.eventBuff.saleUp || 0) + 0.25 },
+  },
+  {
+    id: 'rentFree', title: '房东免租', emoji: '🎁', tone: 'good',
+    desc: '房东好心免收本月房租，省下一笔固定开支。',
+    effect: (s) => { s.eventBuff.skipRent = true },
+  },
+  {
+    id: 'refund', title: '客户退货', emoji: '↩️', tone: 'bad',
+    desc: '一批货因质量问题被退回，本月营收 -15%。',
+    effect: (s) => { s.eventBuff.saleUp = (s.eventBuff.saleUp || 0) - 0.15 },
+  },
+  {
+    id: 'subsidy', title: '政策补贴', emoji: '💰', tone: 'good',
+    desc: '小微企业获政府补贴 ¥1万，直接入账。',
+    effect: (s) => { applyBusiness(s, mk('银行存款', 1, '营业外收入-补贴', 1, '政策补贴入账'), s.month) },
+  },
+]
+
+// ---- D. 经营里程碑 ----
+export const MILESTONES = [
+  { month: 6, id: 'halfYear', emoji: '🗓️', title: '熬过半年', desc: '公司稳健运营满 6 个月' },
+  { month: 12, id: 'firstYear', emoji: '🏅', title: '首年盈利', desc: '完成第一个完整经营年度' },
+  { month: 24, id: 'twoYear', emoji: '🏪', title: '两年老店', desc: '持续经营满 24 个月' },
+  { month: 36, id: 'threeYear', emoji: '👑', title: '三年标杆', desc: '成为行业标杆企业' },
+]
+// 检测本月新达成的里程碑（返回新达成列表）
+export function checkMilestones(state) {
+  const reached = state.reachedMilestones || []
+  const fresh = MILESTONES.filter((m) => state.month >= m.month && !reached.includes(m.id))
+  if (fresh.length) state.reachedMilestones = [...reached, ...fresh.map((m) => m.id)]
+  return fresh
+}
+
+// ---- B. 决策后果回放：量化"你的选择带来了什么差异" ----
+// 在关键决策点调用 trackChoice，记录可对比的指标快照
+export function trackChoice(state, key, payload) {
+  state.choiceLog = state.choiceLog || []
+  state.choiceLog.push({ key, ...payload, month: state.month })
+  return state
+}
+// 计算与"反事实"的对比提示（如小规模 vs 一般纳税人本季增值税差异）
+export function decisionInsights(state) {
+  const log = state.choiceLog || []
+  const insights = []
+  // 增值税选择对比：若选小规模，估算若选一般人要多交多少
+  const taxLog = log.find((l) => l.key === 'taxType')
+  if (taxLog) {
+    if (taxLog.value === 'small') {
+      const generalVat = state.cumSales * TAX.VAT_GENERAL
+      const smallVat = state.cumSales * TAX.VAT_SMALL
+      const save = +(generalVat - smallVat).toFixed(2)
+      if (save > 0.1) insights.push(`🔎 你选「小规模纳税人」：相比一般纳税人，累计少缴增值税约 ¥${fmtW(save)}万（征收率3% vs 税率13%）。`)
+    } else {
+      insights.push(`🔎 你选「一般纳税人」：可抵扣进项税，适合进项充足、客户要专票的成长型企业。`)
+    }
+  }
+  // 杠杆对比
+  const levLog = log.find((l) => l.key === 'leverage')
+  if (levLog && levLog.value !== 'full') {
+    const borrow = levLog.borrow || 0
+    const interest = +(borrow * state.co.economics.interestRate * 12).toFixed(2)
+    insights.push(`🔎 你借款 ¥${fmtW(borrow)}万放大经营，但每年需付利息约 ¥${fmtW(interest)}万，考验现金流。`)
+  }
+  return insights
+}
+
+// ---- A. 通关评分指标（雷达图四维） ----
+// 返回 {profit, cash, risk, compliance} 0~100 分
+export function scoreMetrics(state) {
+  const b = state.balances
+  // 月末收入/成本已结转至「本年利润」，故累计净利润直接取之；若无则按科目反推
+  const netProfit = b['本年利润'] != null
+    ? +b['本年利润']
+    : (+sumAccount(b, '主营业务收入') -
+      (sumAccount(b, '主营业务成本') + sumAccount(b, '管理费用') + sumAccount(b, '财务费用') + sumAccount(b, '研发费用') + sumAccount(b, '所得税费用')))
+  const cash = b['银行存款'] || 0
+  const assets = totalAssets(b)
+  const debt = liabilityTotal(state)
+  // 盈利能力：以净利润/资产 衡量，封顶 100
+  const roa = assets > 0 ? netProfit / assets : 0
+  const profitScore = Math.max(0, Math.min(100, Math.round(roa * 300 + 30)))
+  // 现金流健康：现金为正且占比合理
+  const cashRatio = assets > 0 ? cash / assets : 0
+  const cashScore = Math.max(0, Math.min(100, Math.round(cashRatio * 120 + (cash > 0 ? 20 : 0))))
+  // 风险（杠杆）：负债率越低越好
+  const leverage = assets > 0 ? debt / assets : 0
+  const riskScore = Math.max(0, Math.min(100, Math.round((1 - leverage) * 100)))
+  // 合规度：邪道次数越少越高 + 是否按时缴税
+  const complianceScore = Math.max(0, Math.min(100, 100 - (state.evilCount || 0) * 25 - (state.skippedTaxMonths || 0) * 10))
+  return {
+    profit: profitScore,
+    cash: cashScore,
+    risk: riskScore,
+    compliance: complianceScore,
+    netProfit: +netProfit.toFixed(2),
+    cashRaw: +cash.toFixed(2),
+    assets: +assets.toFixed(2),
+    debt: +debt.toFixed(2),
+  }
+}
+
+// 综合星级（用于结算总结）
+export function overallStars(scores) {
+  const avg = (scores.profit + scores.cash + scores.risk + scores.compliance) / 4
+  if (avg >= 80) return 3
+  if (avg >= 55) return 2
+  if (avg >= 30) return 1
+  return 0
+}
+
+// 在 monthEnd 中接入里程碑/事件/应收应付（对外暴露的钩子，由 Game 调用）
+export function endOfMonthExtras(state, { rollEvent = true } = {}) {
+  const events = []
+  // 应收账款到期收回
+  const rec = collectReceivables(state)
+  if (rec.length) events.push({ type: 'collect', title: '应收账款收回', amount: +(rec.reduce((s, p) => s + p.amount, 0)).toFixed(2) })
+  // 应付账款到期偿还
+  const pay = settleDuePayables(state)
+  if (pay.length) events.push({ type: 'payable', title: '应付账款到期偿还', amount: +(pay.reduce((s, p) => s + p.amount, 0)).toFixed(2) })
+  // 随机事件
+  let ev = null
+  if (rollEvent) ev = rollRandomEvent(state)
+  // 里程碑
+  const miles = checkMilestones(state)
+  return { events, ev, miles }
 }

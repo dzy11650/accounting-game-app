@@ -100,15 +100,26 @@ cd android
 
 | 平台 | 文件 | 大小 | 说明 |
 | --- | --- | --- | --- |
-| 🤖 安卓 | [app-release-1.0.2.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/app-release-1.0.2.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
-| 🪟 Windows（Electron 便携版） | [kjxdj-electron-1.0.2-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/kjxdj-electron-1.0.2-portable.exe) | 81 MB | 双击即用，免安装 |
-| 🪟 Windows（Tauri 版） | [kjxdj-tauri-1.0.2.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/kjxdj-tauri-1.0.2.exe) | 3.9 MB | 体积更小、启动更快，双击即用（已修复旧版双击报 localhost 拒绝连接的问题） |
-| 🪟 Windows（Tauri 安装版） | [kjxdj-tauri-1.0.2-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/kjxdj-tauri-1.0.2-setup.exe) | 1.2 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
+| 🤖 安卓 | [app-release-2.0.0.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.0/app-release-2.0.0.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
+| 🪟 Windows（Electron 便携版） | [kjxdj-electron-2.0.0-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.0/kjxdj-electron-2.0.0-portable.exe) | 81 MB | 双击即用，免安装 |
+| 🪟 Windows（Tauri 版） | [kjxdj-tauri-2.0.0.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.0/kjxdj-tauri-2.0.0.exe) | 3.9 MB | 体积更小、启动更快，双击即用（已修复旧版双击报 localhost 拒绝连接的问题） |
+| 🪟 Windows（Tauri 安装版） | [kjxdj-tauri-2.0.0-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.0/kjxdj-tauri-2.0.0-setup.exe) | 1.2 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
 
-> 所有安装包发布于 Release **[v1.0.2](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v1.0.2)**。
+> 所有安装包发布于 Release **[v2.0.0](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v2.0.0)**。请下载本页最新上传的 v2.0.0 安装包（已修复账期与报税结算问题），旧版账期功能不可用。
 > 文件名为英文，以避免中文文件名在部分系统下显示异常。
 >
 > ⚠️ Windows 安装包暂未做代码签名，首次运行若遇 SmartScreen 提示「请在打开前确保信任」，请点击「更多信息」→「仍要运行」即可正常启动（并非病毒，详见 Release 说明）。
+
+### v2.0.0 更新内容（游戏性大升级）
+- 📥 **主动接单系统**：持续经营章节改为「接订单」模式，每月出现多张订单（金额/毛利率/账期不同），玩家可挑着接、可赊销，把被动经营变主动决策。
+- 🎲 **随机事件**：原料涨价、网红爆单、突击检查、房东免租等事件不定期触发，让每个月都有期待。
+- 💳 **应付账款账期**：赊购不再永久挂账，3 个月后自动从现金扣还，制造真实现金流博弈。
+- 🏆 **经营能力雷达图 + 成就**：结算页用「盈利/现金流/低风险/合规」四维雷达图评价，并解锁里程碑成就。
+- 🔎 **决策后果回放 + 平行对照**：结算时量化展示你的选择带来的差异（如"小规模纳税人比一般人少缴增值税 X 万"），引导换策略再开一局对比。
+- 📊 **本地排行榜 + 多公司对比**：在「我的」页记录每局成绩并排行，支持不同公司类型最佳成绩横向对比。
+- 🐛 修复：月末结转损益未清零损益科目导致报表重复累计的问题。
+- 🐛 修复：赊购账期（应付账款）未入账导致偿还时现金被错误扣减的问题（务必下载最新 v2.0.0 安装包，旧版账期功能不可用）。
+- 🐛 修复：报税后企业所得税未结转至本年利润导致报表不平的问题。
 
 ### v1.0.2 更新内容
 - 新增「股东分红」玩法：股东会可决议分红 30% / 50% / 暂不分红，自动代扣 20% 股息红利个税。

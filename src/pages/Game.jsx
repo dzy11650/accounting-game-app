@@ -9,6 +9,8 @@ import {
   applyFunding, applyExpand, applyTaxType, vatOnSale, vatOnPurchase,
   maybeForceGeneral, applyInvest, settleTax, declareDividend, TAX, TAX_PLANS,
   liabilityTotal, operatingRevenue, MOOD_LABEL, rollYearMood, moodFactor, evilAct, fmtW,
+  genOrder, fulfillOrder, trackChoice, decisionInsights, endOfMonthExtras,
+  scoreMetrics, overallStars, MILESTONES, checkMilestones,
 } from '../lib/engine.js'
 import EntryAnimation from '../components/EntryAnimation.jsx'
 import Toast from '../components/Toast.jsx'
@@ -94,6 +96,8 @@ function Game() {
   // 报表区引用与"已生成"状态：点击生成后滚动到报表卡片，给出明确反馈
   const reportRef = useRef(null)
   const [reportReady, setReportReady] = useState(false)
+  // E: 当月可选订单列表（持续经营章节主动接单）
+  const [monthOrders, setMonthOrders] = useState([])
 
   const chapter = STORY[chapterIdx]
   const step = chapter?.steps[stepIdx]
@@ -177,6 +181,14 @@ function Game() {
 
     if (action.type === 'rent') {
       // 多付/少付：预付 months 个月房租，折扣 discount（多付折扣多、少付现金流压力小）
+      if (s.eventBuff?.skipRent) {
+        // C: 房东免租事件，本月不付房租
+        desc = '房东免租：本月房租全免，省下一笔固定开支'
+        entries = []
+        expected = []
+        applyBusiness(s, entries, desc)
+        return { entries, expected, desc, s }
+      }
       const months = action.months || 1
       const discount = action.discount || 0
       const grossMonthly = eco.rent * scale
@@ -207,19 +219,22 @@ function Game() {
       })
       expected = entries
     } else if (action.type === 'purchase') {
-      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost)
+      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost * (1 + (s.eventBuff?.purchaseUp || 0)))
       const res = vatOnPurchase(s, a, false)
       desc = `进货¥${a}万${s.taxType === 'general' ? `（进项税¥${res.vat}万可抵扣）` : ''}`
       entries = res.entries; expected = res.entries
       s.balances['库存商品'] = (s.balances['库存商品'] || 0) + a
     } else if (action.type === 'purchaseCredit') {
-      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost)
+      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost * (1 + (s.eventBuff?.purchaseUp || 0)))
       const res = vatOnPurchase(s, a, true)
       desc = `赊购¥${a}万${s.taxType === 'general' ? `（进项税¥${res.vat}万可抵扣）` : ''}`
       entries = res.entries; expected = res.entries
       s.balances['库存商品'] += a; s.balances['应付账款'] += a
+      // F: 登记应付账款账期（3 个月后自动从现金扣还，制造现金流博弈）
+      s.payablesDue = s.payablesDue || []
+      s.payablesDue.push({ due: s.month + 3, amount: +(a + res.vat).toFixed(2) })
     } else if (action.type === 'sale') {
-      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost * moodFactor(s))
+      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost * moodFactor(s) * (1 + (s.eventBuff?.saleUp || 0)))
       const cost = +(a * (1 - eco.margin)).toFixed(1)
       const res = vatOnSale(s, a, co.revenueAccount)
       const forced = maybeForceGeneral(s)
@@ -247,6 +262,7 @@ function Game() {
     if (a.type === 'fund') {
       applyFunding(s, a.own) // a.own: 'full'|'part'|'low'
       const borrow = s.balances['短期借款']
+      trackChoice(s, 'leverage', { value: a.own === 'full' ? 'full' : 'partial', borrow }) // B: 决策后果
       const entries = mk('银行存款', s.balances['银行存款'], '实收资本', s.balances['实收资本'], '出资')
       if (borrow > 0) entries.push({ side: 'credit', account: '短期借款', amount: borrow, desc: '出资' })
       recordVoucher(s, { desc: '股东出资（含借款）', actual: entries, expected: entries, month: s.month })
@@ -255,6 +271,7 @@ function Game() {
     }
     if (a.type === 'taxType') {
       applyTaxType(s, a.tax) // a.tax: 'small'|'general'
+      trackChoice(s, 'taxType', { value: a.tax }) // B: 记录纳税人类型决策，结算时对比
       setToast(`纳税人类型：${a.tax === 'general' ? '一般纳税人（税率13%，可抵扣进项）' : '小规模纳税人（征收率3%，进项不可抵扣）'}`)
       return { handled: true, selfContained: false }
     }
@@ -320,10 +337,23 @@ function Game() {
       if (a.type === 'loopStart') {
         s.year = 1
         s.yearMood = rollYearMood() // 第 1 年行情开局即定
+        s.reachedMilestones = []
+        s.choiceLog = s.choiceLog || []
+        s.receivables = []
+        s.payablesDue = []
+      }
+      // E: 每月初刷新 3 张可选订单（玩家主动接单）
+      if (chapter.id === 'continuing') {
+        const orders = Array.from({ length: 3 }, () => genOrder(s))
+        s.monthOrders = orders
+        setMonthOrders(orders)
+      } else {
+        setMonthOrders([])
       }
       const back = 1 // 回到"进货"步（step1），重复 进→销→薪→结
       setSim(s); setStepIdx(back); persist(s, coId, diffId, chapterIdx, back, false)
-      setToast(a.type === 'loopStart' ? `🚀 开始持续经营！本年行情：${MOOD_LABEL[s.yearMood]}（第1年）` : `⏭️ 进入第 ${s.month} 月经营（${MOOD_LABEL[s.yearMood] || '⛅'} 第${s.year || 1}年）`)
+      const orderCount = (s.monthOrders || []).length
+      setToast(a.type === 'loopStart' ? `🚀 开始持续经营！本年行情：${MOOD_LABEL[s.yearMood]}（第1年）` : `⏭️ 进入第 ${s.month} 月经营（${MOOD_LABEL[s.yearMood] || '⛅'} 第${s.year || 1}年），本月 ${orderCount} 张订单待接`)
       return { handled: true, selfContained: true }
     }
     // 结业清算：出最终成绩单
@@ -409,10 +439,19 @@ function Game() {
   const doMonthEnd = (passed) => {
     const s = passed || clone(sim)
     monthEnd(s)
+    // C/D/F: 月末钩子——应收账款收回、应付账款到期、随机事件、里程碑
+    const extras = endOfMonthExtras(s, { rollEvent: true })
+    if (extras.ev) setToast(`🎲 ${extras.ev.emoji} ${extras.ev.title}：${extras.ev.desc}`)
+    if (extras.miles && extras.miles.length) {
+      setTimeout(() => setToast(`🏁 里程碑达成：${extras.miles.map((m) => m.emoji + m.title).join('、')}`), 1200)
+    }
     const settle = settleErrors(s)
     if (settle.fatal) { fail(s, s.failedReason); return }
     setSim(s)
     let msg = `第${s.month}月结账：折旧+计息${settle.penalized ? `，罚款¥${settle.penalized}万` : ''}`
+    if (extras.events && extras.events.length) {
+      msg += '；' + extras.events.map((e) => `${e.title}¥${fmtW(e.amount)}万`).join('，')
+    }
     if (settle.tasks && settle.tasks.length) {
       setAdjustTasks(settle.tasks)
       msg += '；⚠️ 本月有凭证记错，需做调整分录修正！'
@@ -439,6 +478,22 @@ function Game() {
     setSim(s)
   }
 
+  // E: 玩家接单
+  const acceptOrder = (order) => {
+    try {
+      const s = clone(sim)
+      fulfillOrder(s, order)
+      s.monthOrders = (s.monthOrders || []).filter((o) => o.id !== order.id)
+      setMonthOrders(s.monthOrders)
+      setSim(s)
+      persist(s, coId, diffId, chapterIdx, stepIdx, false)
+      setToast(`✓ 已接「${order.customer}」订单：销售额¥${fmtW(order.amount)}万，预计毛利¥${fmtW(order.profit)}万${order.credit > 0 ? `（赊销${order.credit}月后回款）` : '（现结）'}`)
+    } catch (e) {
+      console.error('[acceptOrder 出错]', e)
+      setRuntimeError(`接单出错：${e && e.message}\n${e && e.stack}`)
+    }
+  }
+
   const nextStep = () => {
     if (stepIdx + 1 < chapter.steps.length) {
       const n = stepIdx + 1
@@ -459,14 +514,32 @@ function Game() {
     const profit = s.balances['本年利润'] || 0
     const cash = s.balances['银行存款']
     const ok = cash >= 0 && !s.failed
-    const stars = ok ? Math.max(1, Math.min(3, (cash > 10 ? 1 : 0) + (profit > 0 ? 1 : 0) + (s.lives >= (diff.lives - 1) ? 1 : 0))) : 0
-    const res = { ok, stars, reason: ok ? `通关！净利润¥${fmtW(profit)}万 现金¥${fmtW(cash)}万` : '未达成通关条件', profit, cash }
+    // A: 四维评分（盈利/现金流/风险/合规）
+    const scores = scoreMetrics(s)
+    const stars = overallStars(scores)
+    const res = {
+      ok, stars,
+      reason: ok ? `通关！净利润¥${fmtW(profit)}万 现金¥${fmtW(cash)}万` : '未达成通关条件',
+      profit, cash, scores,
+      insights: decisionInsights(s),                 // B: 决策后果回放
+      milestones: (s.reachedMilestones || []).map((id) => MILESTONES.find((m) => m.id === id)).filter(Boolean), // D
+      ordersFulfilled: s.choices?.ordersFulfilled || 0,
+    }
     setResult(res)
     setEnded(true)
     dispatch({ type: 'ADD_COINS', amount: ok ? 50 : 20 })
     dispatch({ type: 'ADD_EXP', amount: 60 })
     dispatch({ type: 'COMPANY_RUN', id: coId })
     dispatch({ type: 'EARN_BADGE', id: ok ? 'boss' : 'cfo' })
+    // H: 记录本局通关成绩（本地排行榜 / 多公司对比）
+    dispatch({
+      type: 'RECORD_RUN',
+      coId, coName: sim.co?.name || coId,
+      profit: +(sim.balances['本年利润'] || 0).toFixed(2),
+      stars: res.stars, months: sim.month, date: new Date().toISOString().slice(0, 10),
+    })
+    // D: 里程碑成就解锁
+    res.milestones.forEach((m) => dispatch({ type: 'EARN_BADGE', id: 'ms_' + m.id }))
     // 通关后清除存档（已完成）
     clearSave(); setSaved(null)
   }
@@ -540,6 +613,7 @@ function Game() {
   }
 
   if (ended) {
+    const sc = result?.scores
     return (
       <div className="page fade-in">
         <div className="card" style={{ textAlign: 'center', marginTop: 40 }}>
@@ -551,11 +625,33 @@ function Game() {
               {'⭐'.repeat(result.stars)}{'☆'.repeat(3 - result.stars)}
             </div>
           )}
+          {/* A: 四维经营能力雷达图 */}
+          {sc && <RadarChart scores={sc} />}
           {result && (
             <div className="card" style={{ background: '#FFFDF8', textAlign: 'left', marginTop: 10 }}>
               <div>净利润：¥{fmtW(result.profit)}万</div>
               <div>现金余额：¥{fmtW(result.cash)}万</div>
+              <div>累计接单：{result.ordersFulfilled || 0} 笔</div>
               <div>容错剩余：{sim?.lives ?? 0}</div>
+            </div>
+          )}
+          {/* B: 决策后果回放 + G: 平行对照引导 */}
+          {result?.insights?.length > 0 && (
+            <div className="card" style={{ background: '#F4FBF9', textAlign: 'left', marginTop: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>🔎 你的决策带来了什么</div>
+              {result.insights.map((t, i) => <div key={i} style={{ fontSize: 12, lineHeight: 1.7 }}>{t}</div>)}
+              <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 6, lineHeight: 1.6 }}>
+                🔁 平行对照：换一家公司类型、或改用另一种纳税人身份/出资方式再开一局，对比"如果当初走另一条路"能多赚多少——本局成绩已记入「我的-排行榜/多公司对比」。
+              </div>
+            </div>
+          )}
+          {/* D: 里程碑成就 */}
+          {result?.milestones?.length > 0 && (
+            <div className="card" style={{ background: '#FFFAF0', textAlign: 'left', marginTop: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>🏁 达成的经营里程碑</div>
+              {result.milestones.map((m, i) => (
+                <div key={i} style={{ fontSize: 13, padding: '3px 0' }}>{m.emoji} {m.title} — {m.desc}</div>
+              ))}
             </div>
           )}
           <button className="btn mt12" onClick={restart}>🔄 再开一家</button>
@@ -615,10 +711,37 @@ function Game() {
           <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>📏 规模</span><span className="v">×{fmtW(sim.scale || 1)}</span></div>
         </div>
         {(chapter.loop) && (
-          <div className="flex gap8 mt8">
-            <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🌤️ 行情</span><span className="v">{MOOD_LABEL[sim.yearMood] || '⛅ 平常年'}（第{sim.year || 1}年）</span></div>
-            <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>😈 邪道</span><span className="v">{sim.evilCount || 0} 次</span></div>
-          </div>
+          <>
+            <div className="flex gap8 mt8">
+              <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🌤️ 行情</span><span className="v">{MOOD_LABEL[sim.yearMood] || '⛅ 平常年'}（第{sim.year || 1}年）</span></div>
+              <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>😈 邪道</span><span className="v">{sim.evilCount || 0} 次</span></div>
+            </div>
+            {/* C: 当前随机事件提示条 */}
+            {sim.lastEvent && (
+              <div className="flex gap8 mt8" style={{ alignItems: 'center' }}>
+                <div className="shop-stat" style={{ flex: 1, marginBottom: 0, background: sim.lastEvent.tone === 'good' ? '#E3F6EF' : sim.lastEvent.tone === 'bad' ? '#FDECEC' : '#FFF7E6' }}>
+                  <span>{sim.lastEvent.emoji} {sim.lastEvent.title}</span>
+                  <span className="v" style={{ fontSize: 11, fontWeight: 500 }}>{sim.lastEvent.desc}</span>
+                </div>
+              </div>
+            )}
+            {/* D: 里程碑进度 */}
+            {MILESTONES.length > 0 && (
+              <div className="flex gap8 mt8" style={{ flexWrap: 'wrap' }}>
+                {MILESTONES.map((m) => {
+                  const done = (sim.reachedMilestones || []).includes(m.id)
+                  const near = sim.month >= m.month - 1 && !done
+                  return (
+                    <span key={m.id} title={m.desc}
+                      style={{ fontSize: 11, padding: '3px 8px', borderRadius: 8, opacity: done ? 1 : 0.4,
+                        background: done ? 'var(--gold)' : near ? '#E9F8F6' : '#f2efe8', color: done ? '#fff' : 'var(--text-soft)' }}>
+                      {done ? '✓ ' : near ? '🔔 ' : '🔒 '}{m.title}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+          </>
         )}
         {(chapter.loop) && (sim.totalDividend > 0 || (sim.usedTaxPlans || []).length) && (
           <div className="flex gap8 mt8">
@@ -650,6 +773,36 @@ function Game() {
           </div>
         )}
       </div>
+
+      {/* E: 持续经营"销售"步——主动接单面板（替换被动卖货） */}
+      {!selfMode && chapter.id === 'continuing' && step?.options?.[0]?.action?.type === 'sale' && (
+        <div className="card">
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>📥 本月订单（点击接单，把生意主动权握在手里）</div>
+          <div style={{ fontSize: 12, color: 'var(--text-soft)', marginBottom: 10 }}>
+            下方订单可全接也可挑着接。赊销订单会挂「应收账款」，数月后自动回款；不接单也可直接点"卖货收款"按默认成交一笔。
+          </div>
+          {monthOrders.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--text-soft)', padding: '8px 0' }}>本月订单都已接完，或本月无新订单。</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {monthOrders.map((o) => (
+                <div key={o.id} style={{ border: '1.5px solid var(--line)', borderRadius: 12, padding: '10px 12px', background: o.credit > 0 ? '#FFF8F0' : '#F4FBF9' }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{o.emoji || '🧾'} {o.customer}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-soft)', margin: '4px 0' }}>
+                    销售额 ¥{fmtW(o.amount)}万 · 毛利率 {Math.round(o.margin * 100)}% · 预计毛利 ¥{fmtW(o.profit)}万
+                  </div>
+                  <div style={{ fontSize: 11, marginBottom: 6 }}>
+                    {o.credit > 0
+                      ? <span style={{ color: 'var(--accent-deep)', background: '#E9F8F6', padding: '2px 8px', borderRadius: 6 }}>赊销 {o.credit} 月后回款</span>
+                      : <span style={{ color: '#1a8f6a', background: '#E3F6EF', padding: '2px 8px', borderRadius: 6 }}>现结</span>}
+                  </div>
+                  <button className="btn-sm" onClick={() => acceptOrder(o)} style={{ width: '100%' }}>接单并记账</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 简单模式：选项卡片 */}
       {!selfMode && (
@@ -793,6 +946,51 @@ function ReportLite({ report }) {
           <span>{r.item}</span><span>¥{fmtW(Math.abs(r.value))}万</span>
         </div>
       ))}
+    </div>
+  )
+}
+
+// A: 四维经营能力雷达图（纯 SVG，无依赖）
+function RadarChart({ scores }) {
+  const axes = [
+    { key: 'profit', label: '盈利能力', value: scores.profit },
+    { key: 'cash', label: '现金流', value: scores.cash },
+    { key: 'risk', label: '低风险', value: scores.risk },
+    { key: 'compliance', label: '合规度', value: scores.compliance },
+  ]
+  const cx = 90, cy = 90, R = 66
+  const n = axes.length
+  const pt = (i, r) => {
+    const ang = (Math.PI * 2 * i) / n - Math.PI / 2
+    return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)]
+  }
+  const poly = axes.map((a, i) => pt(i, (a.value / 100) * R).join(',')).join(' ')
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>📊 经营能力雷达</div>
+      <svg width="180" height="180" viewBox="0 0 180 180" style={{ maxWidth: 220 }}>
+        {[0.25, 0.5, 0.75, 1].map((g, i) => (
+          <polygon key={i} points={axes.map((_, k) => pt(k, R * g).join(',')).join(' ')} fill="none" stroke="#e6e1d6" />
+        ))}
+        {axes.map((a, i) => {
+          const [x, y] = pt(i, R)
+          return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="#e6e1d6" />
+        })}
+        <polygon points={poly} fill="rgba(46,138,108,0.28)" stroke="var(--primary-deep)" strokeWidth="2" />
+        {axes.map((a, i) => {
+          const [x, y] = pt(i, (a.value / 100) * R)
+          return <circle key={i} cx={x} cy={y} r="3" fill="var(--primary-deep)" />
+        })}
+        {axes.map((a, i) => {
+          const [x, y] = pt(i, R + 14)
+          return <text key={i} x={x} y={y} fontSize="10" textAnchor="middle" fill="var(--text-soft)">{a.label}</text>
+        })}
+      </svg>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginTop: 4 }}>
+        {axes.map((a) => (
+          <span key={a.key} className="chip" style={{ fontSize: 11 }}>{a.label} {a.value}</span>
+        ))}
+      </div>
     </div>
   )
 }

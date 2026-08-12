@@ -1,7 +1,7 @@
 {
   "name": "accounting-game-app",
   "private": true,
-  "version": "1.0.2",
+  "version": "2.0.0",
   "type": "module",
   "description": "面向零基础人员的会计入门教学App，融入游戏化元素",
   "main": "electron/main.js",
@@ -52,13 +52,14 @@
       "icon": null
     },
     "portable": {
-      "artifactName": "${productName}-${version}-portable.exe"
+      "artifactName": "kjxdj-electron-${version}-portable.exe"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "artifactName": "kjxdj-electron-${version}-setup.exe"
     },
-    "artifactName": "${productName}-${version}-portable"
+    "artifactName": "kjxdj-electron-${version}-portable"
   }
 }
