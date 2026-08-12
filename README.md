@@ -100,12 +100,14 @@ cd android
 
 | 平台 | 文件 | 大小 | 说明 |
 | --- | --- | --- | --- |
-| 🤖 安卓 | [app-release.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.1-release/app-release.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
-| 🪟 Windows（Electron 便携版） | [kjxdj-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.1-release/kjxdj-portable.exe) | 81 MB | 双击即用，免安装 |
-| 🪟 Windows（Tauri 版） | [kjxdj-tauri.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.1-release/kjxdj-tauri.exe) | 4.0 MB | 体积更小、启动更快，双击即用 |
+| 🤖 安卓 | [app-release-1.0.2.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/app-release-1.0.2.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
+| 🪟 Windows（Electron 便携版） | [kjxdj-electron-1.0.2-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/kjxdj-electron-1.0.2-portable.exe) | 81 MB | 双击即用，免安装 |
+| 🪟 Windows（Tauri 版） | [kjxdj-tauri-1.0.2.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v1.0.2/kjxdj-tauri-1.0.2.exe) | 4.1 MB | 体积更小、启动更快，双击即用 |
 
-> 所有安装包发布于 Release **[v1.0.1-release](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v1.0.1-release)**。
-> Tauri 版文件名为英文（`kjxdj-tauri.exe`），以避免中文文件名在部分系统下显示异常。
+> 所有安装包发布于 Release **[v1.0.2](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v1.0.2)**。
+> 文件名为英文，以避免中文文件名在部分系统下显示异常。
+>
+> ⚠️ Windows 安装包暂未做代码签名，首次运行若遇 SmartScreen 提示「请在打开前确保信任」，请点击「更多信息」→「仍要运行」即可正常启动（并非病毒，详见 Release 说明）。
 
 ## 赞助
 
