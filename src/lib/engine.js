@@ -369,14 +369,25 @@ export function monthEnd(state, opts = {}) {
 
   // 结转损益：将本月损益科目余额转入「本年利润」，并清零损益科目（避免重复累计）
   const rev = sumAccount(state.balances, '主营业务收入')
+  // 注意：所得税费用不计入此处 costs —— 企业所得税由 settleTax() 单独计提并直接结转「本年利润」（见 settleTax 内"结转所得税费用至本年利润"）。
+  // 若此处再把所得税费用算进 costs 并 += monthProfit，会导致所得税被重复扣除一次（本月 settleTax 扣一次，下月 monthEnd 又把上月 settleTax 记的所得税费用算进 costs 再扣一次）。
   const costs = sumAccount(state.balances, '主营业务成本') + sumAccount(state.balances, '管理费用') +
-    sumAccount(state.balances, '财务费用') + sumAccount(state.balances, '研发费用') + sumAccount(state.balances, '所得税费用')
+    sumAccount(state.balances, '财务费用') + sumAccount(state.balances, '研发费用')
   const monthProfit = +(rev - costs).toFixed(2)
   state.balances['本年利润'] = +((state.balances['本年利润'] || 0) + monthProfit).toFixed(2)
   // 累计损益追踪：已改由 applyBusiness 实时累加至 state.cum（见 pnlCat），此处无需重复累加
-  // 清零本月损益科目（下月从 0 开始累计）。注意：应交税费-销项/进项属负债/资产，由 settleTax 正常缴纳，不可在此清零
-  for (const k of ['主营业务收入', '主营业务成本', '管理费用', '财务费用', '研发费用', '所得税费用', '管理费用-折旧', '管理费用-房租', '管理费用-稽查', '管理费用-招聘', '财务费用-利息', '营业外收入-补贴']) {
+  // 清零本月损益科目（下月从 0 开始累计）。注意：
+  //  - 应交税费-销项/进项属负债/资产，由 settleTax 正常缴纳，不可在此清零
+  //  - 所得税费用由 settleTax 跨月管理，不在此清零，否则会与上述重复扣除问题叠加
+  // 清零本月损益科目（下月从 0 开始累计）。注意：
+  //  - 应交税费-销项/进项属负债/资产，由 settleTax 正常缴纳，不可在此清零
+  //  - 所得税费用由 settleTax 跨月管理，不在此清零
+  //  - 必须清空所有带后缀的子科目（如 管理费用-工资/房租），否则子科目会逐月累积导致利润虚亏
+  for (const k of ['主营业务收入', '主营业务成本', '管理费用', '财务费用', '研发费用', '营业外收入-补贴']) {
     if (state.balances[k] != null) state.balances[k] = 0
+    for (const full of Object.keys(state.balances)) {
+      if (full === k || full.startsWith(k + '-')) state.balances[full] = 0
+    }
   }
 
   state.history.push({ month: m, cash: state.balances['银行存款'], profit: state.balances['本年利润'], revenue: rev, totalAssets: totalAssets(state.balances) })
