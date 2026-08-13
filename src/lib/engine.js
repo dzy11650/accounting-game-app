@@ -33,6 +33,18 @@ function bump(balances, account, side, amount) {
   if (side === 'credit') delta = -delta
   if (!isDebitNormal) delta = -delta
   balances[account] = (balances[account] || 0) + delta
+  return delta
+}
+
+// 损益科目 → 累计损益类别（供利润表实时追踪）
+function pnlCat(account) {
+  if (account === '主营业务收入' || account.startsWith('主营业务收入')) return 'revenue'
+  if (account === '主营业务成本' || account.startsWith('主营业务成本')) return 'cost'
+  if (account === '管理费用' || account.startsWith('管理费用')) return 'mgmt'
+  if (account === '财务费用' || account.startsWith('财务费用')) return 'fin'
+  if (account === '研发费用' || account.startsWith('研发费用')) return 'rd'
+  if (account === '所得税费用' || account.startsWith('所得税费用')) return 'tax'
+  return null
 }
 
 // ---------- 难度配置 ----------
@@ -107,6 +119,7 @@ export function createCompany(companyId, diffId = 'easy', projectId = null) {
     totalDividend: 0,              // 累计已分红净额（股东实得）
     quarterRevenue: 0,             // 本季度累计营收（用于小规模免税判定）
     usedTaxPlans: [],              // 已采用的合法筹划手段 id 列表
+    cum: { revenue: 0, cost: 0, mgmt: 0, fin: 0, rd: 0, tax: 0 }, // 累计损益（实时追踪，供利润表展示）
     // 游戏性增强字段
     receivables: [],               // 应收账款（赊销，F）
     payablesDue: [],               // 到期应付账款（F）
@@ -229,6 +242,12 @@ export function settleTax(state, plans = []) {
   }
 
   // 应税所得额：研发费用加计扣除（合法筹划），每花1元研发税前扣除2元
+  // 兜底：仅科技类企业（co.id === 'tech'）有研发活动，非科技型企业不选研发加计，
+  // 避免“连锁零售/工厂也能加计扣除”的设定穿帮（前端 choose 已拦截，此处为二次防护）。
+  if (planSet.has('rndDeduction') && state.co?.id !== 'tech') {
+    planSet.delete('rndDeduction')
+    plans = plans.filter((p) => p !== 'rndDeduction')
+  }
   let taxableProfit = state.balances['本年利润'] || 0
   if (planSet.has('rndDeduction')) {
     const rnd = state.balances['研发费用'] || 0
@@ -293,7 +312,11 @@ function withMeta(e, month, i) {
 // 应用分录（按科目性质记账 + 写账本）
 export function applyBusiness(state, entries, desc, month) {
   const ledger = [...state.ledger]
-  entries.forEach((e) => bump(state.balances, e.account, e.side, e.amount))
+  entries.forEach((e) => {
+    const delta = bump(state.balances, e.account, e.side, e.amount)
+    const cat = pnlCat(e.account)
+    if (cat && state.cum) state.cum[cat] = +((state.cum[cat] || 0) + delta).toFixed(2)
+  })
   entries.forEach((e, i) => ledger.push(withMeta(e, month ?? state.month, ledger.length + i)))
   state.ledger = ledger
   return state
@@ -350,6 +373,7 @@ export function monthEnd(state, opts = {}) {
     sumAccount(state.balances, '财务费用') + sumAccount(state.balances, '研发费用') + sumAccount(state.balances, '所得税费用')
   const monthProfit = +(rev - costs).toFixed(2)
   state.balances['本年利润'] = +((state.balances['本年利润'] || 0) + monthProfit).toFixed(2)
+  // 累计损益追踪：已改由 applyBusiness 实时累加至 state.cum（见 pnlCat），此处无需重复累加
   // 清零本月损益科目（下月从 0 开始累计）。注意：应交税费-销项/进项属负债/资产，由 settleTax 正常缴纳，不可在此清零
   for (const k of ['主营业务收入', '主营业务成本', '管理费用', '财务费用', '研发费用', '所得税费用', '管理费用-折旧', '管理费用-房租', '管理费用-稽查', '管理费用-招聘', '财务费用-利息', '营业外收入-补贴']) {
     if (state.balances[k] != null) state.balances[k] = 0
@@ -471,13 +495,15 @@ export function buildReports(state) {
   ]
   const balance = { type: 'balance', rows: [...assets, ...liabilities, ...equity] }
 
-  const revenue = +sumAccount(b, '主营业务收入').toFixed(2)
-  const cost = +sumAccount(b, '主营业务成本').toFixed(2)
-  const mgmt = +sumAccount(b, '管理费用').toFixed(2)
-  const fin = +sumAccount(b, '财务费用').toFixed(2)
-  const rd = +sumAccount(b, '研发费用').toFixed(2)
-  const tax = +sumAccount(b, '所得税费用').toFixed(2)
-  const netProfit = +(revenue - cost - mgmt - fin - rd - tax).toFixed(2)
+  // 利润表：优先用累计损益 cum（月末损益科目清零后仍可还原累计），回退到余额
+  const cum = state.cum || {}
+  const revenue = +((cum.revenue != null ? cum.revenue : sumAccount(b, '主营业务收入'))).toFixed(2)
+  const cost = +((cum.cost != null ? cum.cost : sumAccount(b, '主营业务成本'))).toFixed(2)
+  const mgmt = +((cum.mgmt != null ? cum.mgmt : sumAccount(b, '管理费用'))).toFixed(2)
+  const fin = +((cum.fin != null ? cum.fin : sumAccount(b, '财务费用'))).toFixed(2)
+  const rd = +((cum.rd != null ? cum.rd : sumAccount(b, '研发费用'))).toFixed(2)
+  const tax = +((cum.tax != null ? cum.tax : sumAccount(b, '所得税费用'))).toFixed(2)
+  const netProfit = +(state.balances['本年利润'] || 0).toFixed(2) // 累计净利润以「本年利润」为准（带符号）
   const income = {
     type: 'income',
     rows: [
@@ -490,7 +516,52 @@ export function buildReports(state) {
       { item: '净利润', value: netProfit, emphasize: true },
     ],
   }
-  return { balance, income }
+
+  // 现金流量表（间接法·教学简化版）
+  // 说明：游戏月末会把损益类科目（收入/成本/费用）清零，仅保留累计余额与「本年利润」，
+  // 故无法直接法取发生额。采用间接法，全部基于“不会清零”的累计余额，
+  // 并且与资产负债表恒等式勾稽：现金净增加额 = 期末货币资金余额。
+  const np = +g('本年利润').toFixed(2)
+  const dep = +g('累计折旧').toFixed(2)
+  const amort = +g('累计摊销').toFixed(2)
+  // 年中(未结账)损益科目仍有本月发生额，月末后清零；用「本年利润(累计至上月末) + 本月损益发生额」得到累计经营净额，使月中/月末勾稽都成立
+  const monthPnL = +(g('主营业务收入') - g('主营业务成本') - g('管理费用') - g('财务费用') - g('研发费用') - g('所得税费用')).toFixed(2)
+  const inventory = +(g('库存商品') + g('原材料') + g('生产成本')).toFixed(2) // 存货占用（期初0）
+  const receivable = +g('应收账款').toFixed(2) // 应收占用（期初0）
+  const payable = +(g('应付账款') + g('应付职工薪酬') + g('应交税费') + g('应付利息')).toFixed(2) // 应付增加（期初0）
+  const opNet = +(np + monthPnL + dep + amort - inventory - receivable + payable).toFixed(2)
+  const invOut = -(+g('固定资产').toFixed(2) + +g('无形资产').toFixed(2) + +g('研发支出').toFixed(2)) // 购建长期资产（期初0）
+  const invNet = +invOut.toFixed(2)
+  const finIn = +(g('短期借款') + g('实收资本') + g('股本')).toFixed(2) // 借款+出资流入（期初0）
+  const finOut = -(+g('应付股利').toFixed(2) + (state.dividendPaid || 0)) // 分红流出
+  const finNet = +(finIn + finOut).toFixed(2)
+  const cashNet = +(opNet + invNet + finNet).toFixed(2)
+  const endCash = +(g('银行存款') + g('库存现金')).toFixed(2)
+  const cashflow = {
+    type: 'cashflow',
+    note: '间接法（基于累计余额，与资产负债表勾稽）',
+    rows: [
+      { item: '一、经营活动现金流量', level: 'h' },
+      { item: '净利润', value: np },
+      { item: '加：累计折旧', value: dep },
+      { item: '加：累计摊销', value: amort },
+      { item: '减：存货的增加', value: -inventory },
+      { item: '减：应收账款的增加', value: -receivable },
+      { item: '加：应付账款等经营性负债的增加', value: payable },
+      { item: '经营活动产生的现金流量净额', value: opNet, level: 'total' },
+      { item: '二、投资活动现金流量', level: 'h' },
+      { item: '购建固定资产、无形资产等支付的现金', value: invOut },
+      { item: '投资活动产生的现金流量净额', value: invNet, level: 'total' },
+      { item: '三、筹资活动现金流量', level: 'h' },
+      { item: '取得借款、吸收投资收到的现金', value: finIn },
+      { item: '偿还债务、分配利润支付的现金', value: finOut },
+      { item: '筹资活动产生的现金流量净额', value: finNet, level: 'total' },
+      { item: '四、现金及现金等价物净增加额', value: cashNet, level: 'total' },
+      { item: '期末现金及现金等价物余额', value: endCash, level: 'total' },
+    ],
+  }
+
+  return { balance, income, cashflow }
 }
 
 // ================= 第七章「持续经营」扩展 =================
@@ -982,4 +1053,128 @@ export function endOfMonthExtras(state, { rollEvent = true } = {}) {
   // 里程碑
   const miles = checkMilestones(state)
   return { events, ev, miles }
+}
+
+// 轻量合规度：基于邪道/违规痕迹估算 0~100
+export function complianceNow(state) {
+  let score = 100
+  score -= (state.taxAdjusts || 0) * 8 // 调账（虚增成本）次数
+  score -= (state.taxOwed || 0) > 0 ? 25 : 0 // 直接拖欠税金
+  score -= Math.min((state.skippedTaxMonths || 0), 6) * 3 // 欠税月数
+  score -= (state.wageDiscontent || 0) * 3 // 欠薪不满度
+  score -= (state.wageStrikes || 0) * 6 // 罢工次数
+  return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+// 关键财务指标快照
+export function financialSnapshot(state) {
+  const cash = +(state.balances['银行存款'] || 0) + (state.balances['库存现金'] || 0)
+  const debt = liabilityTotal(state)
+  const assets = totalAssets(state.balances)
+  const netProfit = +(state.balances['本年利润'] || 0)
+  const debtRatio = assets > 0 ? +(debt / assets * 100).toFixed(1) : 0
+  return {
+    cash: +cash.toFixed(2),
+    debt: +debt.toFixed(2),
+    assets: +assets.toFixed(2),
+    netProfit: +netProfit.toFixed(2),
+    debtRatio,
+    compliance: complianceNow(state),
+    revenue: +operatingRevenue(state).toFixed(2),
+  }
+}
+
+// 每个分支选择后的财务分析与诊断
+// before/after：选择前后的 state；action：本次决策 action 对象；ctx：可选 { title }
+export function analyzeDecision(before, after, action, ctx = {}) {
+  const snapBefore = financialSnapshot(before)
+  const snapAfter = financialSnapshot(after)
+  const dCash = +(snapAfter.cash - snapBefore.cash).toFixed(2)
+  const dNet = +(snapAfter.netProfit - snapBefore.netProfit).toFixed(2)
+  const dDebt = +(snapAfter.debt - snapBefore.debt).toFixed(2)
+  const dComp = snapAfter.compliance - snapBefore.compliance
+
+  const impacts = []
+  const add = (label, v, good) => {
+    if (v === 0) return
+    const dir = v > 0 ? 'up' : 'down'
+    impacts.push({ label, value: v, dir, good })
+  }
+  // 现金变化：多数经营现金流出为"负向但合理"，用 good 标记是否健康
+  add('现金流（银行存款）', dCash, action?.type === 'fund' ? dCash > 0 : dCash >= 0)
+  add('累计净利（本年利润）', dNet, dNet >= 0)
+  add('总负债', dDebt, dDebt <= 0)
+  if (dComp !== 0) add('合规度', dComp, dComp > 0)
+
+  // 诊断结论
+  const type = action?.type || ctx.type || 'unknown'
+  let diagnosis = ''
+  const cashLow = snapAfter.cash < 2
+  const cashNeg = snapAfter.cash < 0
+  const debtHigh = snapAfter.debtRatio > 70
+  const loss = snapAfter.netProfit < 0
+  const compLow = snapAfter.compliance < 50
+
+  if (cashNeg) diagnosis = '⚠️ 现金已为负，资金链断裂风险极高，下月可能无法支付工资/税款，需立即融资或压缩开支。'
+  else if (compLow) diagnosis = `⚠️ 合规度仅 ${snapAfter.compliance}/100，存在违规痕迹（欠税/欠薪/调账），后续被稽查、滞纳金或罢工风险上升，建议尽快合规化。`
+  else if (debtHigh) diagnosis = '⚠️ 资产负债率偏高（>70%），财务杠杆过大，利息与还款压力会吞噬利润，注意偿债节奏。'
+  else if (loss) diagnosis = '📉 当前累计净利为负，处于亏损状态，需提升毛利或控制固定费用改善盈利。'
+  else if (cashLow) diagnosis = '⚠️ 现金逼近警戒线（<2万），流动性紧张，建议保留足够支付工资与税款的缓冲。'
+  else diagnosis = '✅ 财务状况稳健，本次决策未触及重大风险。'
+
+  // 针对分支的专项解读
+  let focus = ''
+  if (type === 'sale') {
+    const gp = snapAfter.revenue > 0 ? Math.max(0, (snapAfter.netProfit)) : 0
+    focus = `本次销售形成营收，现金与利润同步累积；毛利率取决于（售价-采购成本）结构。持续放量可摊薄固定费用。`
+  } else if (type === 'purchase') {
+    focus = `进货以现金/应付换取存货，短期占用${dCash < 0 ? '现金' : '资金'}但不立即影响利润，待销售结转成本时才体现毛利。注意存货积压会拖累周转。`
+  } else if (type === 'salary') {
+    if (action?.evil) focus = '⚠️ 你选择了拖欠工资。员工不满意度上升，将降低工作效率（营收与利润受损），并累积罢工概率；罢工记录会放大后续风险。'
+    else focus = '工资按时足额发放，团队稳定，不影响效率。人力成本是固定费用，需营收覆盖。'
+  } else if (type === 'rent' || type === 'utilities') {
+    focus = '房租/水电为固定费用，直接冲减当期利润，与销量无关，需靠营收规模摊薄。'
+  } else if (type === 'tax') {
+    const plans = action?.plans || []
+    if (action?.evil === 'adjust') focus = '⚠️ 你通过调账虚增成本少缴税。短期降税，但调账次数越多，被税务稽查补税+滞纳金的概率越高，合规度下降。'
+    else if (action?.evil === 'owe') focus = '⚠️ 你直接拖欠税款。每日产生万分之五滞纳金持续累积，且欠税记录拉低信用评级与合规度。'
+    else if (plans.length) focus = `本次选用了合法税务筹划（${plans.join('、')}），在合规前提下降低税负，值得鼓励。`
+    else focus = '本次按法定税率足额纳税，合规无风险，但未用足政策红利。'
+  } else if (type === 'expand') {
+    focus = `扩张${dDebt > 0 ? '增加了负债（借款）' : ''}${dCash < 0 ? '并消耗现金' : ''}，换取产能/规模上限提升，未来可承接更大订单，但需营收跟上以覆盖新增利息与折旧。`
+  } else if (type === 'invest') {
+    focus = action?.level === 'high'
+      ? '高投入前置成本已支出，未来每笔销售规模放大 25%，属高风险高回报，需后续营收兑现。'
+      : '低投入无前置成本，营收小幅提升，更稳健。'
+  } else if (type === 'fund') {
+    focus = `融资带来现金流入${dDebt > 0 ? '，但同时增加负债与利息负担' : ''}，用于补血或扩张，注意负债率不要失控。`
+  } else if (type === 'taxType') {
+    focus = action?.value === 'general'
+      ? '转为一般纳税人：可抵扣进项税，适合进项充足的企业；但税率较高，需规范开票。'
+      : '保持/转小规模纳税人：征收率较低、申报简单，但不得抵扣进项，规模受限（年销售额≤500万）。'
+  } else if (action?.evil) {
+    focus = '⚠️ 本次为"邪道"操作，短期利好现金/利润，但累积违规痕迹，后续被稽查、罢工或信用受损的概率上升。'
+  } else if (type === 'monthEnd') {
+    const parts = []
+    if ((snapAfter.cash - snapBefore.cash) < 0) parts.push('本月现金净流出')
+    else parts.push('本月现金净流入')
+    if (snapAfter.debtRatio > snapBefore.debtRatio) parts.push('杠杆上升')
+    if (snapAfter.compliance < snapBefore.compliance) parts.push('合规度下降（存在违规痕迹）')
+    focus = `月末结账完成：计提折旧、结转损益${parts.length ? '；' + parts.join('，') : ''}。若曾拖欠工资/税款，本月已累积滞纳金或罢工风险，需关注下月现金流与合规度。`
+  }
+
+  const title = ctx.title || ({
+    sale: '销售业务', purchase: '采购进货', salary: '发放工资', rent: '支付房租',
+    utilities: '水电费', tax: '纳税申报', expand: '扩张投资', invest: '经营投入',
+    fund: '融资筹资', taxType: '纳税人身份',
+  }[type] || '经营决策')
+
+  return {
+    title,
+    impacts,
+    diagnosis,
+    focus,
+    snapshot: snapAfter,
+    alert: cashNeg || debtHigh || loss || snapAfter.compliance <= 40,
+  }
 }

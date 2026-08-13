@@ -106,7 +106,12 @@ export const STORY = [
     tier: 'primary',
     steps: [
       {
-        npc: '供应商：进货啦！现金付还是赊账？贸易公司常赊购形成"应付账款"。',
+        npc: (s) => {
+          const cn = s?.co?.name || '公司'
+          const pe = s?.projectEmoji || ''
+          const pn = s?.projectName || ''
+          return `供应商：进货啦！现金付还是赊账？${cn}${pe ? `·${pe}${pn}` : ''}常赊购形成"应付账款"。`
+        },
         options: [
           {
             label: '现金进货上架',
@@ -121,7 +126,19 @@ export const STORY = [
         ],
       },
       {
-        npc: '顾客：来一杯奶茶！扫码支付。',
+        npc: (s) => {
+          const cn = s?.co?.name || '公司'
+          const pid = s?.projectId
+          const cid = s?.co?.id
+          const pe = s?.projectEmoji || ''
+          const pn = s?.projectName || ''
+          if (cid === 'shop') return `顾客：${pid === 'milktea' ? '来一杯经典奶茶' : pid === 'bake' ? '来一份烘焙甜品' : '来一杯鲜果茶'}！扫码支付。`
+          if (cid === 'tech') return `客户：${pid === 'game' ? '游戏充值到账' : pid === 'ai' ? 'AI 模型调用结算' : 'SaaS 续费到账'}，在线付款。`
+          if (cid === 'factory') return `采购商：${pid === 'auto' ? '汽车配件' : pid === 'cloth' ? '服装面料' : '食品加工料'}这批货验收通过，款项已转账。`
+          if (cid === 'trade') return `买家：${pid === 'elec' ? '电子数码' : pid === 'energy' ? '能源化工' : '农副产品'}已签收，款项已到账。`
+          if (cid === 'listed') return `客户：${pid === 'finance' ? '金融服务费' : pid === 'infra' ? '工程款' : '连锁零售门店'}结算到账。`
+          return `顾客：${pn ? `(${pe}${pn}) ` : ''}成交！扫码支付。`
+        },
         options: [
           {
             label: '卖货收款',
@@ -141,12 +158,14 @@ export const STORY = [
         ],
       },
       {
-        npc: '市场部：要不要投一笔营销/研发？高投入能放大后续营收，但要先掏真金白银；低投入稳一点，增长慢。',
+        npc: (s) => s.co.id === 'tech'
+          ? '市场/研发部：要不要加大投入？高投入能放大后续营收，但要先掏真金白银；低投入稳一点，增长慢。'
+          : '市场部：要不要投一笔营销/门店推广？高投入能放大后续营收，但要先掏真金白银；低投入稳一点，增长慢。',
         options: [
           {
             label: '高投入（前置成本，后续营收+25%）',
             action: { type: 'invest', kind: 'market', level: 'high' },
-            teach: '高投入：当期确认一笔营销/研发费用（减少利润与现金），但未来每笔销售规模放大 25%，高风险高回报。',
+            teach: '高投入：当期确认一笔营销投入（科技公司计入「研发费用」科目，其他公司计入「销售费用」），减少利润与现金，但未来每笔销售规模放大 25%，高风险高回报。',
           },
           {
             label: '低投入（无前置成本，营收小幅提升）',
@@ -313,7 +332,21 @@ export const STORY = [
         ],
       },
       {
-        npc: '顾客：老样子，来杯奶茶！扫码支付。本年行情会影响你的营业额——丰年门庭若市，歉年门可罗雀。',
+        npc: (s) => {
+          const cn = s?.co?.name || '公司'
+          const pid = s?.projectId
+          const cid = s?.co?.id
+          const pe = s?.projectEmoji || ''
+          const pn = s?.projectName || ''
+          let line
+          if (cid === 'shop') line = `顾客：老样子，${pid === 'milktea' ? '经典奶茶' : pid === 'bake' ? '烘焙甜品' : '鲜果茶'}一份！扫码支付。`
+          else if (cid === 'tech') line = `客户：${pid === 'game' ? '游戏充值到账' : pid === 'ai' ? 'AI 调用结算' : 'SaaS 续费到账'}，已付款。`
+          else if (cid === 'factory') line = `采购商：${pid === 'auto' ? '汽车配件' : pid === 'cloth' ? '服装面料' : '食品加工料'}验收入库，款已转账。`
+          else if (cid === 'trade') line = `买家：${pid === 'elec' ? '电子数码' : pid === 'energy' ? '能源化工' : '农副产品'}已签收，款项已到账。`
+          else if (cid === 'listed') line = `客户：${pid === 'finance' ? '金融服务费' : pid === 'infra' ? '工程款' : '连锁零售门店'}结算到账。`
+          else line = `顾客：${pn ? `(${pe}${pn}) ` : ''}成交！扫码支付。`
+          return `${line}本年行情会影响你的营业额——丰年门庭若市，歉年门可罗雀。`
+        },
         options: [
           {
             label: '卖货收款',
@@ -352,12 +385,12 @@ export const STORY = [
             label: '依法纳税 + 用足合法优惠（正道·合理避税）',
             action: { type: 'tax', plans: ['smallBenefit', 'rndDeduction', 'vatSmall'] },
             recommended: true,
-            teach: '合理避税≠偷税！合法筹划：①小型微利优惠（年所得≤300万所得税仅5%）；②研发费用加计扣除100%（花1元研发税前扣2元）；③小规模季度≤30万免增值税。都是国家给的红利，用足不违规。',
+            teach: '合理避税≠偷税！合法筹划：①小型微利优惠（年所得≤300万所得税仅5%）；②研发费用加计扣除100%（花1元研发税前扣2元，仅科技类企业有研发活动可享受）；③小规模季度≤30万免增值税。都是国家给的红利，用足不违规。',
           },
           {
-            label: '只做研发加计扣除（轻量筹划）',
+            label: '只做研发加计扣除（科技公司专属轻量筹划）',
             action: { type: 'tax', plans: ['rndDeduction'] },
-            teach: '研发加计：把研发费用在税前扣除翻倍，少缴所得税，鼓励创新，完全合法。',
+            teach: '研发加计：把研发费用在税前扣除翻倍，少缴所得税，鼓励创新，完全合法。注意：仅科技类企业（软件/游戏/AI 研发）有符合条件的研发活动，其他行业（如连锁零售、工厂、贸易）选择会被提示「无符合条件的研发活动」，无法享受。',
           },
           {
             label: '😈 税务调账改低应纳税额（邪道）',

@@ -12,6 +12,7 @@ import {
   wageEfficiency, resolveStrike, evilTaxAdjust, evilTaxOwe,
   genOrder, fulfillOrder, trackChoice, decisionInsights, endOfMonthExtras,
   scoreMetrics, overallStars, MILESTONES, checkMilestones,
+  analyzeDecision, financialSnapshot, complianceNow,
 } from '../lib/engine.js'
 import EntryAnimation from '../components/EntryAnimation.jsx'
 import Toast from '../components/Toast.jsx'
@@ -103,6 +104,8 @@ function Game() {
   const [monthOrders, setMonthOrders] = useState([])
   // 罢工弹窗：pendingStrike 有值时显示三选一
   const [pendingStrike, setPendingStrike] = useState(null)
+  // 每个分支选择后的财务分析与诊断
+  const [analysis, setAnalysis] = useState(null)
 
   const chapter = STORY[chapterIdx]
   const step = chapter?.steps[stepIdx]
@@ -297,6 +300,11 @@ function Game() {
     }
     if (a.type === 'tax') {
       const plans = a.plans || [] // 合法税务筹划手段数组
+      // 研发加计扣除仅科技类企业可用：非 tech 选中时拦截，提示玩家并停留本步，不缴税
+      if (plans.includes('rndDeduction') && co.id !== 'tech') {
+        setToast(`💡 ${co.name} 不是科技型企业，没有符合条件的研发活动，无法享受「研发费用加计扣除」。该优惠仅限科技公司（做软件/游戏/AI 研发）。`)
+        return { handled: true, selfContained: true } // 不前进、不缴税
+      }
       const res = settleTax(s, plans)
       const planNote = plans.length ? '（已做合法筹划，少缴税✓）' : ''
       s.usedTaxPlans = [...new Set([...(s.usedTaxPlans || []), ...plans])]
@@ -397,16 +405,23 @@ function Game() {
     try {
       if (!opt || !opt.action) { nextStep(); return }
       const a = opt.action
+      const before = clone(sim)
       const s = clone(sim)
       const sp = runSpecial(s, a)
       if (sp.handled) {
-        if (!sp.selfContained) afterSpecial(s) // monthEnd 自行处理推进
+        if (!sp.selfContained) {
+          afterSpecial(s)
+        } else {
+          // 被拦截（如非科技公司选研发加计）：仍给出分析但不前进
+          setAnalysis(analyzeDecision(before, s, a, { title: '操作被拦截' }))
+        }
         return
       }
       const { entries, expected, desc } = doBusiness(s, a)
       if (diff.selfEntry) return // 困难模式不应走这里
       recordVoucher(s, { desc, actual: expected, expected, month: s.month })
       setSim(s); setLastEntries(entries); setToast(desc + ' ✓')
+      setAnalysis(analyzeDecision(before, s, a))
       afterAction(s)
     } catch (e) {
       console.error('[choose 出错]', e)
@@ -419,10 +434,15 @@ function Game() {
     try {
       const a = step.options[0]?.action
       if (!a) { nextStep(); return }
+      const before = clone(sim)
       const s = clone(sim)
       const sp = runSpecial(s, a)
       if (sp.handled) {
-        if (!sp.selfContained) afterSpecial(s)
+        if (!sp.selfContained) {
+          afterSpecial(s)
+        } else {
+          setAnalysis(analyzeDecision(before, s, a, { title: '操作被拦截' }))
+        }
         return
       }
       const { entries, expected, desc } = doBusiness(s, a, brief?.amount)
@@ -440,6 +460,7 @@ function Game() {
         setToast(diff.autoFix ? '记错啦，已自动修正' : `✗ 分录有误，扣 1 次容错（剩 ${s.lives}）`)
         setLastEntries(entries) // 展示正确分录
       }
+      setAnalysis(analyzeDecision(before, s, a, { title: '自写分录：' + desc }))
       setEntryForm({ dAcc: '', dAmt: '', cAcc: '', cAmt: '' })
       afterAction(s)
     } catch (e) {
@@ -464,6 +485,7 @@ function Game() {
 
   // ---------- 结账并纠错 ----------
   const doMonthEnd = (passed) => {
+    const before = clone(sim) // 结账前快照（用于月度体检对比）
     const s = passed || clone(sim)
     monthEnd(s)
     // C/D/F: 月末钩子——应收账款收回、应付账款到期、随机事件、里程碑
@@ -490,6 +512,8 @@ function Game() {
     if (s.pendingBlowup) msg += `；${s.pendingBlowup}`
     setToast(msg)
     if (s.pendingBlowup) s.pendingBlowup = null
+    // 月度体检：结账后展示本月财务分析与诊断
+    setAnalysis(analyzeDecision(before, s, { type: 'monthEnd' }, { title: `第 ${s.month} 月结账体检` }))
     if (s.failed) { fail(s, s.failedReason); return }
     if (isBankrupt(s)) { fail(s, '资不抵债，公司破产！'); return }
     nextStep()
@@ -952,7 +976,7 @@ function Game() {
             step.options.length ? (
               <>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>⚙️ 这个决策由你拍板</div>
-                <div style={{ fontSize: 12, color: 'var(--text-soft)', marginBottom: 10 }}>{step.npc}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-soft)', marginBottom: 10 }}>{typeof step.npc === 'function' ? step.npc(sim) : step.npc}</div>
                 {step.options.map((opt, i) => (
                   <div key={i} className="option" style={{ cursor: 'pointer' }} onClick={() => choose(opt)}>
                     <span className="opt-key">{i + 1}</span><span>{opt.label}</span>
@@ -966,6 +990,55 @@ function Game() {
 
       {lastEntries && <EntryAnimation entries={lastEntries} />}
 
+      {analysis && (
+        <div className="card" style={{ background: analysis.alert ? '#FFF6F4' : '#F7FBF8', border: `1px solid ${analysis.alert ? '#F3C0B5' : '#BFE3D0'}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ fontWeight: 800 }}>🔍 财务诊断 · {analysis.title}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-soft)' }}>本步决策影响</div>
+          </div>
+          {analysis.impacts.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {analysis.impacts.map((it, i) => (
+                <span key={i} style={{
+                  fontSize: 12, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
+                  background: it.good ? '#E6F6EC' : '#FDEAE6',
+                  color: it.good ? '#1F8A4C' : '#C0392B',
+                }}>
+                  {it.label} {it.dir === 'up' ? '▲' : '▼'} {fmtW(it.value)}
+                </span>
+              ))}
+            </div>
+          )}
+          {analysis.focus && (
+            <div style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--text)', marginBottom: 6 }}>
+              {analysis.focus}
+            </div>
+          )}
+          <div style={{
+            fontSize: 12.5, fontWeight: 700, lineHeight: 1.6, marginBottom: 8,
+            color: analysis.alert ? '#C0392B' : '#1F8A4C',
+          }}>
+            {analysis.diagnosis}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 6 }}>
+            {[
+              { k: '现金(万)', v: fmtW(analysis.snapshot.cash), warn: analysis.snapshot.cash < 2 },
+              { k: '累计净利(万)', v: fmtW(analysis.snapshot.netProfit), warn: analysis.snapshot.netProfit < 0 },
+              { k: '负债率', v: analysis.snapshot.debtRatio + '%', warn: analysis.snapshot.debtRatio > 70 },
+              { k: '合规度', v: analysis.snapshot.compliance + '/100', warn: analysis.snapshot.compliance < 40 },
+            ].map((m, i) => (
+              <div key={i} style={{
+                background: '#fff', borderRadius: 8, padding: '6px 8px', textAlign: 'center',
+                border: `1px solid ${m.warn ? '#F3C0B5' : '#ECECEC'}`,
+              }}>
+                <div style={{ fontSize: 10.5, color: 'var(--text-soft)' }}>{m.k}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: m.warn ? '#C0392B' : 'var(--text)' }}>{m.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {reports && (
         <div ref={reportRef} className="card" style={{ background: '#FFFDF8' }}>
           <div style={{ fontWeight: 800, marginBottom: 8 }}>📊 当前报表（实时）</div>
@@ -974,6 +1047,7 @@ function Game() {
           </div>
           <ReportLite report={reports.balance} />
           <ReportLite report={reports.income} />
+          <ReportLite report={reports.cashflow} />
         </div>
       )}
 
@@ -1035,14 +1109,34 @@ function EntryForm({ form, setForm }) {
 }
 
 function ReportLite({ report }) {
+  const title = report.type === 'balance' ? '资产负债表' : report.type === 'income' ? '利润表' : '现金流量表'
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{report.type === 'balance' ? '资产负债表' : '利润表'}</div>
-      {report.rows.map((r, i) => (
-        <div key={i} className="flex between center" style={{ fontSize: 12, padding: '2px 0' }}>
-          <span>{r.item}</span><span>¥{fmtW(Math.abs(r.value))}万</span>
-        </div>
-      ))}
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{title}</div>
+      {report.type === 'cashflow' && report.note && (
+        <div style={{ fontSize: 10.5, color: 'var(--text-soft)', marginBottom: 4 }}>（{report.note}）</div>
+      )}
+      {report.rows.map((r, i) => {
+        if (r.level === 'h') return (
+          <div key={i} style={{ fontSize: 12, fontWeight: 800, marginTop: 6, color: 'var(--accent-deep)' }}>{r.item}</div>
+        )
+        const isTotal = r.level === 'total' || r.emphasize
+        const isSub = r.level === 'sub'
+        const neg = r.value != null && r.value < 0
+        return (
+          <div key={i} className="flex between center" style={{
+            fontSize: isTotal ? 12.5 : 12,
+            fontWeight: isTotal ? 800 : (isSub ? 700 : 400),
+            padding: '2px 0',
+            paddingLeft: isSub || isTotal ? 8 : 0,
+            borderTop: isTotal ? '1px solid #d9d2c4' : 'none',
+            color: neg ? '#C0392B' : (isTotal ? 'var(--primary-deep)' : 'var(--text)'),
+          }}>
+            <span>{r.item}</span>
+            <span>{r.value == null ? '' : '¥' + fmtW(r.value) + '万'}</span>
+          </div>
+        )
+      })}
     </div>
   )
 }
