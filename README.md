@@ -104,6 +104,8 @@ cd android
 | 🪟 Windows（Electron 便携版） | [kjxdj-electron-2.0.4-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/kjxdj-electron-2.0.4-portable.exe) | 78 MB | 双击即用，免安装 |
 | 🪟 Windows（Electron 便携版·修复1） | [kjxdj-electron-2.0.4-portable-fix1-202608130629.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/kjxdj-electron-2.0.4-portable-fix1-202608130629.exe) | 81 MB | 含「非科技公司税务选项卡死」bug 修复 |
 | 🪟 Windows（Electron 便携版·修复2） | [kjxdj-electron-2.0.4-portable-fix2-202608130634.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/kjxdj-electron-2.0.4-portable-fix2-202608130634.exe) | 81 MB | 含「邪道·不发工资 evilSalary is not defined」崩溃修复，建议新下载用户用此版 |
+| 🪟 Windows（Tauri 便携版·修复2） | [会计小当家-fix2-202608130646.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6-fix2-202608130646.exe) | 4 MB | Tauri 版（含 evilSalary 崩溃修复），双击即用 |
+| 🪟 Windows（Tauri 安装版·修复2） | [会计小当家_2.0.4_x64-setup-fix2-202608130646.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6_2.0.4_x64-setup-fix2-202608130646.exe) | 1 MB | Tauri 版安装包（含 evilSalary 崩溃修复） |
 | 🪟 Windows（Tauri 安装版） | [会计小当家_2.0.4_x64-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6_2.0.4_x64-setup.exe) | 1.2 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
 | 🪟 Windows（Tauri 便携版） | [会计小当家.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6.exe) | 4.3 MB | 体积更小、启动更快，双击即用 |
 
@@ -118,7 +120,7 @@ cd android
 - 📑 **新增现金流量表（第三张主表）**：报表区补齐间接法现金流量表，与资产负债表、利润表三表勾稽，现金净增加额 ≡ 期末货币资金。
 - 🐛 修复：利润表 / 资产负债表亏损金额负号被吞（负数正确显示并标红）。
 - 🐛 修复：利润表月中 / 月末数据失真（损益累计改为实时追踪，不再依赖月末清零）。
-- 🐛 修复：选择「邪道·不发工资」(`evilSalary`) 时 `ReferenceError: evilSalary is not defined` 崩溃（漏导入，已补 `import { evilSalary }`）。
+- 🐛 修复：选择「邪道·不发工资」(`evilSalary`) 时 `ReferenceError: evilSalary is not defined` 崩溃（漏导入，已补 `import { evilSalary }`）。Electron 与 Tauri 两版均已重建并上传修复版（fix2）。
 
 ### v2.0.3 更新内容
 - 🃏 **邪道玩法 2.0**：工资不满度系统升级为「罢工三选一」分支，玩家需在补偿、谈判、硬扛之间权衡，后果实时反映在现金流与员工士气上。
