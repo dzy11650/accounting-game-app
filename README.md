@@ -102,6 +102,7 @@ cd android
 | --- | --- | --- | --- |
 | 🤖 安卓 | [app-release.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/app-release.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
 | 🪟 Windows（Electron 便携版） | [kjxdj-electron-2.0.4-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/kjxdj-electron-2.0.4-portable.exe) | 78 MB | 双击即用，免安装 |
+| 🪟 Windows（Electron 便携版·修复） | [kjxdj-electron-2.0.4-portable-fix1-202608130629.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/kjxdj-electron-2.0.4-portable-fix1-202608130629.exe) | 81 MB | 含「非科技公司税务选项卡死」bug 修复，建议新下载用户用此版 |
 | 🪟 Windows（Tauri 安装版） | [会计小当家_2.0.4_x64-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6_2.0.4_x64-setup.exe) | 1.2 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
 | 🪟 Windows（Tauri 便携版） | [会计小当家.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6.exe) | 4.3 MB | 体积更小、启动更快，双击即用 |
 
@@ -131,6 +132,7 @@ cd android
 - 🐛 修复：赊购账期（应付账款）未入账导致偿还时现金被错误扣减的问题。
 - 🐛 修复：报税后企业所得税未结转至本年利润导致报表不平的问题。
 - 🐛 修复：`trackChoice` 未返回新 state 导致部分交互状态不刷新。
+- 🐛 修复：非科技公司（如联塑零售、奶茶店）点击「依法纳税 + 用足合法优惠（正道·合理避税）」推荐项时，因带「研发加计扣除」被误拦截、无法进入下一步的卡死问题（现改为自动剔除不适用项并继续缴税推进）。
 - 🧹 清理：删除 v2.0.0 release 中的重复/损坏产物，统一下载入口。
 
 ### v2.0.0 更新内容（游戏性大升级）
