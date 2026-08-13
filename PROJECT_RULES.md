@@ -33,6 +33,14 @@
 ### 1.3 上传产物到 Gitee Release
 - **禁止使用 `curl -F file=@...`** 上传附件（Gitee attach_files 接口不接受，返回 200 但 assets 为空）。
 - 使用 **Node.js https + multipart** 脚本上传（参考历史 `_upload_v204.mjs`）。
+- **上传端点必须用 `attach_files`，不是 `assets`/`attachments`**：
+  - ✅ 正确：`POST /api/v5/repos/{owner}/{repo}/releases/{release_id}/attach_files?access_token=...`
+  - ❌ 错误：`.../releases/{id}/assets` → 返回 **404**（页面不存在）；
+    `.../releases/assets` → 返回 **405**（method not allowed）。
+  - 曾误用这两个路径，误以为 Gitee 下线了上传功能（实测 API 未变动，接口一直可用）。
+- **上传前先清理旧附件**：同一 release 反复发版时，用
+  `DELETE /api/v5/repos/{owner}/{repo}/releases/{release_id}/attach_files/{asset_id}` 删掉旧包，
+  避免 Release 上残留非最新代码产物（曾因残留旧包造成版本不一致）。
 - README 中的下载链接含中文文件名时，必须做 **URL 百分号转义**（如 `会计小当家` → `%E4%BC%9A...`），否则链接失效。
 
 ---
@@ -94,4 +102,6 @@
 - ❌ 中文 commit message 经 Git/Gitee 编码往返变乱码 → ✅ 改用英文 message。
 - ❌ PowerShell 读写中文文件 GBK 损坏 → ✅ 改用 Node 脚本。
 - ❌ `curl -F` 上传 Gitee 附件返回 200 但无附件 → ✅ 改用 Node multipart。
+- ❌ 误用 `.../releases/{id}/assets`（404）或 `.../releases/assets`（405）上传，误判 Gitee 下线 → ✅ 正确端点为 `.../releases/{id}/attach_files`，API 未变动。
+- ❌ 同一 release 残留旧附件导致版本不一致 → ✅ 上传前先 `DELETE .../attach_files/{asset_id}` 清理旧包。
 - ❌ 发版漏写/漏补历史版本 README → ✅ 发版必更新并补全。
