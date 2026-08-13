@@ -299,16 +299,18 @@ function Game() {
       doMonthEnd(s); return { handled: true, selfContained: true }
     }
     if (a.type === 'tax') {
-      const plans = a.plans || [] // 合法税务筹划手段数组
-      // 研发加计扣除仅科技类企业可用：非 tech 选中时拦截，提示玩家并停留本步，不缴税
+      let plans = a.plans || [] // 合法税务筹划手段数组
+      // 研发加计扣除仅科技类企业可用：非 tech 时自动剔除该项（而不是拦截卡死），保证流程能继续推进
+      let skippedRnd = false
       if (plans.includes('rndDeduction') && co.id !== 'tech') {
-        setToast(`💡 ${co.name} 不是科技型企业，没有符合条件的研发活动，无法享受「研发费用加计扣除」。该优惠仅限科技公司（做软件/游戏/AI 研发）。`)
-        return { handled: true, selfContained: true } // 不前进、不缴税
+        plans = plans.filter((p) => p !== 'rndDeduction')
+        skippedRnd = true
       }
       const res = settleTax(s, plans)
       const planNote = plans.length ? '（已做合法筹划，少缴税✓）' : ''
+      const skipNote = skippedRnd ? ` · 已自动剔除「研发费用加计扣除」（${co.name}非科技型企业无适用研发活动）` : ''
       s.usedTaxPlans = [...new Set([...(s.usedTaxPlans || []), ...plans])]
-      setToast(`缴税：增值税¥${res.vatPayable}万 + 企业所得税¥${res.cit}万（${res.taxType === 'general' ? '一般纳税人' : '小规模'}）${res.forced ? ' · 已强制转一般纳税人' : ''}${planNote}`)
+      setToast(`缴税：增值税¥${res.vatPayable}万 + 企业所得税¥${res.cit}万（${res.taxType === 'general' ? '一般纳税人' : '小规模'}）${res.forced ? ' · 已强制转一般纳税人' : ''}${planNote}${skipNote}`)
       return { handled: true, selfContained: false }
     }
     // 股东分红：从税后利润中按 ratio 分配（可选比例）

@@ -1,0 +1,3300 @@
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+/* ===== 文件: App.jsx ===== */
+import { Routes, Route } from 'react-router-dom'
+import TopBar from './components/TopBar.jsx'
+import BottomNav from './components/BottomNav.jsx'
+import Home from './pages/Home.jsx'
+import Game from './pages/Game.jsx'
+import Reports from './pages/Reports.jsx'
+import Me from './pages/Me.jsx'
+export default function App() {
+  return (
+    <div className="app-shell">
+      <Routes>
+        <Route path="/" element={<><TopBar title="会计小当家" /><Home /></>} />
+        <Route path="/learn" element={<><TopBar title="经营我的公司" /><Game /></>} />
+        <Route path="/game" element={<><TopBar title="经营我的公司" /><Game /></>} />
+        <Route path="/reports" element={<><TopBar title="财务报表" /><Reports /></>} />
+        <Route path="/me" element={<><TopBar title="我的" /><Me /></>} />
+      </Routes>
+      <BottomNav />
+    </div>
+  )
+}
+/* ===== 文件: components/BottomNav.jsx ===== */
+import { NavLink } from 'react-router-dom'
+const items = [
+  { to: '/', emoji: '🏠', label: '首页', end: true },
+  { to: '/game', emoji: '🏪', label: '经营' },
+  { to: '/reports', emoji: '📊', label: '报表' },
+  { to: '/me', emoji: '🏆', label: '我的' },
+]
+export default function BottomNav() {
+  return (
+    <nav className="bottom-nav">
+      {items.map((it) => (
+        <NavLink
+          key={it.to}
+          to={it.to}
+          end={it.end}
+          className={({ isActive }) => 'nav-item' + (isActive ? ' active' : '')}
+        >
+          <span className="emoji">{it.emoji}</span>
+          <span>{it.label}</span>
+        </NavLink>
+      ))}
+    </nav>
+  )
+}
+/* ===== 文件: components/EntryAnimation.jsx ===== */
+import { useState } from 'react'
+export default function EntryAnimation({ entries }) {
+1 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  const [show, setShow] = useState(true)
+  const total = entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+  return (
+    <div className="card">
+      <div className="flex between center" style={{ marginBottom: 12 }}>
+        <strong>📒 会计分录演示</strong>
+        <button className="btn ghost" style={{ width: 'auto', padding: '6px 14px', fontSize: 13 }} onClick={() => setShow(true)}>
+          ↻ 重播
+        </button>
+      </div>
+      {show ? (
+        <>
+          {entries.map((e, i) => (
+            <div
+              key={i}
+              className={`entry-row ${e.side === 'debit' ? 'delay-1' : 'delay-2'}`}
+            >
+              <div className={`entry-side ${e.side}`}>
+                <div className="flex between center">
+                  <span className="label">{e.side === 'debit' ? '借 DEBIT' : '贷 CREDIT'}</span>
+                </div>
+                <div className="flex between center" style={{ marginTop: 4 }}>
+                  <span className="acc">{e.account}</span>
+                  <span className="amt">
+                    {Number(e.amount) ? '¥' + e.amount.toLocaleString() + '万' : '—'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+          <div className="entry-amount-line mt12">
+            {total ? `借贷合计：¥${total.toLocaleString()}万` : '有借必有贷 · 借贷必相等'}
+          </div>
+        </>
+      ) : (
+        <div style={{ color: 'var(--text-soft)', fontSize: 13 }}>
+          点击「播放动画」，看一笔业务如何变成规范的借贷分录 ✨
+        </div>
+      )}
+    </div>
+  )
+}
+/* ===== 文件: components/ReportView.jsx ===== */
+import { useMemo } from 'react'
+const TYPE_META = {
+  balance: { title: '📊 资产负债表', sub: '资产 = 负债 + 所有者权益' },
+  income: { title: '📈 利润表', sub: '收入 - 费用 = 利润' },
+  cashflow: { title: '🌊 现金流量表', sub: '经营 + 投资 + 筹资 = 净增加' },
+}
+export default function ReportView({ report }) {
+2 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  if (!report) return null
+  const meta = TYPE_META[report.type] || TYPE_META.balance
+  const { balanced, totals } = useMemo(() => {
+    if (report.type === 'balance') {
+      const asset = report.rows.filter((r) => r.side === 'asset').reduce((s, r) => s + r.value, 0)
+      const liability = report.rows.filter((r) => r.side === 'liability').reduce((s, r) => s + r.value, 0)
+      const equity = report.rows.filter((r) => r.side === 'equity').reduce((s, r) => s + r.value, 0)
+      return { balanced: Math.abs(asset - (liability + equity)) < 0.05, totals: { asset, liability, equity, right: liability + equity } }
+    }
+    if (report.type === 'income') {
+      const net = report.rows.find((r) => r.item === '净利润')
+      const revenue = report.rows.find((r) => r.item === '营业收入')
+      const expense = report.rows.find((r) => r.item === '减：所得税费用')
+      const profit = net ? net.value : 0
+      const rev = revenue ? revenue.value : 0
+      return { balanced: true, totals: { revenue: rev, expense: 0, profit } }
+    }
+    const net = report.rows.reduce((s, r) => s + r.value, 0)
+    return { balanced: true, totals: { net } }
+  }, [report])
+  return (
+    <div className="card" style={{ background: '#FFFDF8' }}>
+      <div style={{ fontWeight: 800, fontSize: 16 }}>{meta.title}</div>
+      <div style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 2 }}>{meta.sub}</div>
+      {report.type === 'balance' && (
+        <div style={{ marginTop: 12 }}>
+          <ReportTable title="资产" rows={report.rows.filter((r) => r.side === 'asset')} />
+          <ReportTable title="负债" rows={report.rows.filter((r) => r.side === 'liability')} />
+          <ReportTable title="所有者权益" rows={report.rows.filter((r) => r.side === 'equity')} />
+          <div className="flex between center" style={{ marginTop: 8, fontWeight: 800 }}>
+            <span>资产合计</span><span className="v">{fmt(totals.asset)}</span>
+          </div>
+          <div className="flex between center" style={{ fontWeight: 800 }}>
+            <span>负债+权益合计</span><span className="v">{fmt(totals.right)}</span>
+          </div>
+        </div>
+      )}
+      {report.type === 'income' && (
+        <div style={{ marginTop: 12 }}>
+          <ReportTable title="" rows={report.rows} />
+          <div className="flex between center" style={{ marginTop: 8, fontWeight: 800, color: 'var(--accent-deep)' }}>
+            <span>净利润</span><span className="v">{fmt(totals.profit)}</span>
+          </div>
+        </div>
+      )}
+      {report.type === 'cashflow' && (
+        <div style={{ marginTop: 12 }}>
+          <ReportTable title="" rows={report.rows} />
+          <div className="flex between center" style={{ marginTop: 8, fontWeight: 800, color: 'var(--accent-deep)' }}>
+            <span>现金净增加额</span><span className="v">{fmt(totals.net)}</span>
+3 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+          </div>
+        </div>
+      )}
+      <div
+        className="mt12"
+        style={{
+          padding: '8px 12px',
+          borderRadius: 10,
+          fontSize: 13,
+          fontWeight: 700,
+          background: balanced ? '#E4F8F1' : '#FFEDED',
+          color: balanced ? 'var(--accent-deep)' : '#FF6B6B',
+        }}
+      >
+        {balanced ? '✅ 报表平衡，编制正确！' : '❌ 报表不平衡，请检查项目'}
+      </div>
+    </div>
+  )
+}
+function ReportTable({ title, rows }) {
+  if (!rows.length) return null
+  return (
+    <div style={{ marginBottom: 6 }}>
+      {title && <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--primary-deep)', margin: '6px 0' }}>{title}</div>}
+      {rows.map((r, i) => (
+        <div key={i} className="flex between center" style={{ padding: r.emphasize ? '8px 0' : '6px 0', borderBottom: '1px dashed var(--line)', fontSize: r.emphasize ? 15 : 14, fontWeight: r.emphasize ? 800 : 400, color: r.emphasize ? 'var(--accent-deep)' : 'inherit' }}>
+          <span>{r.item}</span>
+          <span style={{ fontWeight: 700 }}>{fmt(r.value)}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+function fmt(n) {
+  const v = Number(n) || 0
+  return (v < 0 ? '-' : '') + '¥' + Math.abs(v).toLocaleString() + '万'
+}
+/* ===== 文件: components/Toast.jsx ===== */
+import { useEffect } from 'react'
+export default function Toast({ message, onClose, duration = 1600 }) {
+  useEffect(() => {
+    if (!message) return
+    const t = setTimeout(onClose, duration)
+    return () => clearTimeout(t)
+  }, [message, duration, onClose])
+  if (!message) return null
+  return <div className="toast">{message}</div>
+}
+/* ===== 文件: components/TopBar.jsx ===== */
+import { useUser } from '../store/UserContext.jsx'
+4 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+import { TIERS } from '../data/tiers.js'
+export default function TopBar({ title }) {
+  const { state } = useUser()
+  const tier = TIERS.find((t) => t.id === state.tier)
+  return (
+    <div className="topbar">
+      <div className="title">{title}</div>
+      <div className="spacer" />
+      <div className="pill level" title="当前职称">🎯 {tier?.name}</div>
+      <div className="pill coins">🪙 {state.coins}</div>
+    </div>
+  )
+}
+/* ===== 文件: data/badges.js ===== */
+export const BADGES = [
+  { id: 'firstBlood', name: '初出茅庐', emoji: '🌱', desc: '创立第一家公司和完成第一笔业务' },
+  { id: 'firstEntry', name: '分录达人', emoji: '📒', desc: '完成第一笔会计分录' },
+  { id: 'boss', name: '公司掌舵人', emoji: '🏪', desc: '经营公司并盈利通关' },
+  { id: 'cfo', name: '财务总监', emoji: '💼', desc: '完整走完公司创立到结账全流程' },
+  { id: 'reportPro', name: '报表专家', emoji: '📊', desc: '生成资产负债表/利润表' },
+  { id: 'allClear', name: '通关王者', emoji: '👑', desc: '体验全部公司类型经营' },
+]
+/* ===== 文件: data/companies.js ===== */
+export const COMPANIES = [
+  {
+    id: 'shop',
+    name: '小生意（奶茶店）',
+    emoji: '🍜',
+    difficulty: 1,
+    blurb: '街角奶茶店，科目少、流程简单，最适合零基础入门。',
+    initCash: 20,
+    economics: {
+      rent: 0.3,            // 月房租
+      salary: 0.5,          // 月工资
+      interestRate: 0.005,  // 借款月利率
+      dealSize: 2,          // 单笔进货/销售基准规模
+      margin: 0.4,          // 毛利率
+    },
+    fixedAssets: [{ name: '制冰机/封口机', value: 3, monthlyDep: 0.1 }],
+    purchase: (amt) => ([
+      { side: 'debit', account: '库存商品', amount: amt },
+      { side: 'credit', account: '银行存款', amount: amt },
+    ]),
+    costOfSale: (amt) => ([
+      { side: 'debit', account: '主营业务成本', amount: amt },
+      { side: 'credit', account: '库存商品', amount: amt },
+    ]),
+    revenueAccount: '主营业务收入',
+    costAccount: '主营业务成本',
+    projects: [
+5 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+      { id: 'milktea', name: '经典奶茶', emoji: '🧋', blurb: '走量快、毛利高、单价低，最适合练手。', econ: { margin: 0.45, dealSize: 2 } },
+      { id: 'bake', name: '烘焙甜品', emoji: '🍰', blurb: '客单价更高、损耗大，对库存周转要求高。', econ: { margin: 0.5, dealSize: 1.5, rent: 0.35 } },
+      { id: 'fruittea', name: '鲜果茶', emoji: '🍓', blurb: '原材料鲜度要求高，损耗与采购节奏更难把控。', econ: { margin: 0.42, dealSize: 2, salary: 0.6 } },
+    ],
+  },
+  {
+    id: 'tech',
+    name: '科技公司',
+    emoji: '💡',
+    difficulty: 3,
+    blurb: '做软件订阅，有研发、服务器摊销、股权融资，分录更丰富。',
+    initCash: 50,
+    economics: {
+      rent: 0.8, salary: 1.5, interestRate: 0.006, dealSize: 3, margin: 0.6,
+    },
+    fixedAssets: [{ name: '服务器/办公设备', value: 10, monthlyDep: 0.4 }],
+    purchase: (amt) => ([
+      { side: 'debit', account: '研发支出-材料', amount: amt },
+      { side: 'credit', account: '银行存款', amount: amt },
+    ]),
+    costOfSale: (amt) => ([
+      { side: 'debit', account: '主营业务成本', amount: amt },
+      { side: 'credit', account: '库存商品', amount: amt },
+    ]),
+    revenueAccount: '主营业务收入-订阅',
+    costAccount: '主营业务成本',
+    projects: [
+      { id: 'saas', name: 'SaaS 订阅', emoji: '💻', blurb: '高复购、近乎零边际成本，毛利天花板最高。', econ: { margin: 0.7, dealSize: 3 } },
+      { id: 'game', name: '游戏发行', emoji: '🎮', blurb: '爆款波动大、流水高但分成与买量成本高。', econ: { margin: 0.55, dealSize: 4, salary: 1.8 } },
+      { id: 'ai', name: 'AI 工具', emoji: '🤖', blurb: '前沿赛道，研发与算力（服务器）投入重。', econ: { margin: 0.6, dealSize: 3, rent: 1.0 } },
+    ],
+    capitalizeRnd: (amt) => ([
+      { side: 'debit', account: '无形资产-软件', amount: amt },
+      { side: 'credit', account: '研发支出-材料', amount: amt },
+    ]),
+    amortize: (amt) => ([
+      { side: 'debit', account: '管理费用-摊销', amount: amt },
+      { side: 'credit', account: '累计摊销', amount: amt },
+    ]),
+  },
+  {
+    id: 'factory',
+    name: '工厂',
+    emoji: '🏭',
+    difficulty: 4,
+    blurb: '重资产制造，原材料→生产成本→库存商品，折旧与人工是大头。',
+    initCash: 100,
+    economics: {
+      rent: 1.5, salary: 3, interestRate: 0.005, dealSize: 6, margin: 0.25,
+    },
+6 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+    fixedAssets: [{ name: '厂房设备', value: 40, monthlyDep: 1.5 }],
+    purchase: (amt) => ([
+      { side: 'debit', account: '原材料', amount: amt },
+      { side: 'credit', account: '银行存款', amount: amt },
+    ]),
+    produce: (amt) => ([
+      { side: 'debit', account: '生产成本', amount: amt },
+      { side: 'credit', account: '原材料', amount: amt },
+    ]),
+    costOfSale: (amt) => ([
+      { side: 'debit', account: '主营业务成本', amount: amt },
+      { side: 'credit', account: '库存商品', amount: amt },
+    ]),
+    revenueAccount: '主营业务收入-产成品',
+    costAccount: '主营业务成本',
+    projects: [
+      { id: 'auto', name: '汽车配件', emoji: '🚗', blurb: '订单大、账期长，应收应付与存货管理是难点。', econ: { margin: 0.22, dealSize: 7 } },
+      { id: 'cloth', name: '服装制造', emoji: '👕', blurb: '季节性强、库存跌价风险高，对周转要求极高。', econ: { margin: 0.3, dealSize: 5 } },
+      { id: 'food', name: '食品加工', emoji: '🍞', blurb: '原料涨跌频繁、保质期短，损耗与采购节奏难。', econ: { margin: 0.2, dealSize: 6, rent: 1.7 } },
+    ],
+  },
+  {
+    id: 'trade',
+    name: '贸易公司',
+    emoji: '🚚',
+    difficulty: 3,
+    blurb: '大宗商品买卖，常赊销赊购，应收应付与汇兑风险突出。',
+    initCash: 60,
+    economics: {
+      rent: 0.6, salary: 1.0, interestRate: 0.005, dealSize: 4, margin: 0.3,
+    },
+    fixedAssets: [{ name: '仓库/车辆', value: 15, monthlyDep: 0.5 }],
+    purchase: (amt, onCredit) => onCredit ? ([
+      { side: 'debit', account: '库存商品', amount: amt },
+      { side: 'credit', account: '应付账款', amount: amt },
+    ]) : ([
+      { side: 'debit', account: '库存商品', amount: amt },
+      { side: 'credit', account: '银行存款', amount: amt },
+    ]),
+    costOfSale: (amt) => ([
+      { side: 'debit', account: '主营业务成本', amount: amt },
+      { side: 'credit', account: '库存商品', amount: amt },
+    ]),
+    revenueAccount: '主营业务收入',
+    costAccount: '主营业务成本',
+    projects: [
+      { id: 'elec', name: '电子数码', emoji: '📱', blurb: '单价高、更新快、贬值猛，库存管理是命门。', econ: { margin: 0.28, dealSize: 5 } },
+      { id: 'energy', name: '能源化工', emoji: '🛢️', blurb: '大宗波动大、常赊销赊购，汇兑与价格风险突出。', econ: { margin: 0.22, dealSize: 8, rent: 0.8 } },
+      { id: 'grain', name: '农副产品', emoji: '🌾', blurb: '季节与气候影响大，收购资金密集、账期长。', econ: { margin: 0.25, dealSize: 6, salary: 1.2 } },
+    ],
+7 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  },
+  {
+    id: 'listed',
+    name: '上市公司',
+    emoji: '🏢',
+    difficulty: 5,
+    blurb: '股份制、多轮融资、合并报表、严格披露，最完整的会计图景。',
+    initCash: 200,
+    economics: {
+      rent: 4, salary: 8, interestRate: 0.004, dealSize: 12, margin: 0.3,
+    },
+    fixedAssets: [{ name: '总部大楼/设备', value: 80, monthlyDep: 3 }],
+    purchase: (amt) => ([
+      { side: 'debit', account: '库存商品', amount: amt },
+      { side: 'credit', account: '银行存款', amount: amt },
+    ]),
+    costOfSale: (amt) => ([
+      { side: 'debit', account: '主营业务成本', amount: amt },
+      { side: 'credit', account: '库存商品', amount: amt },
+    ]),
+    revenueAccount: '主营业务收入',
+    costAccount: '主营业务成本',
+    projects: [
+      { id: 'finance', name: '金融控股', emoji: '🏦', blurb: '资本运作频繁、表外业务多，合并报表最复杂。', econ: { margin: 0.32, dealSize: 14 } },
+      { id: 'infra', name: '基建地产', emoji: '🏗️', blurb: '重资产、长周期、借款与预收房款勾稽关系密。', econ: { margin: 0.26, dealSize: 16, rent: 4.5 } },
+      { id: 'retail', name: '连锁零售', emoji: '🛍️', blurb: '门店多、流水碎、存货与现金管理网点分散。', econ: { margin: 0.28, dealSize: 12, salary: 9 } },
+    ],
+    issueStock: (amt) => ([
+      { side: 'debit', account: '银行存款', amount: amt },
+      { side: 'credit', account: '股本', amount: amt },
+    ]),
+  },
+]
+export function getCompany(id) {
+  return COMPANIES.find((c) => c.id === id) || COMPANIES[0]
+}
+/* ===== 文件: data/story.js ===== */
+export const STORY = [
+  {
+    chapter: 1,
+    title: '第一章 · 创立公司',
+    tier: 'primary',
+    steps: [
+      {
+        npc: '工商局小姐姐：欢迎创业！先选你要开什么类型的公司吧，不同类型账目可不一样哦～',
+        options: [], // 公司类型由主页/开局选择，此处仅对话
+        teach: '不同行业用不同会计科目：小生意用"库存商品"，工厂用"原材料/生产成本"，科技公司有"研发费用"。',
+      },
+      {
+        npc: '导师：启动资金怎么来？全部自己出，还是借一部分？这决定了你的"实收资本"和"短期借款"科目，也影响后续利息与抵税。',
+8 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+        options: [
+          {
+            label: '全部自有资金（稳健，无利息负担）',
+            action: { type: 'fund', own: 'full', borrow: 0 },
+            teach: '自有资金投入：借 银行存款 / 贷 实收资本。没有借款，后续没有利息支出，也无利息抵税。',
+          },
+          {
+            label: '自有资金 + 银行借款 30%（杠杆经营）',
+            action: { type: 'fund', own: 'part', borrow: 0.3 },
+            recommended: true,
+            teach: '借款入账：借 银行存款 / 贷 短期借款。注意：借款次月起每月要计提利息（财务费用），但利息可在税前扣除、抵减所得税。',
+          },
+          {
+            label: '自有资金 + 银行借款 70%（高杠杆，高风险）',
+            action: { type: 'fund', own: 'low', borrow: 0.7 },
+            teach: '高杠杆放大收益也放大风险：利息抵税更明显，但每月利息吃掉利润，现金紧张时易资金链断裂、破产。',
+          },
+        ],
+      },
+      {
+        npc: '税务局：你打算登记成哪种纳税人？这决定增值税怎么交——小规模按 3% 征收率、进项不能抵扣；一般人按 13%、进项可抵扣，但年销售超 500万会被强制转一般人。',
+        options: [
+          {
+            label: '小规模纳税人（征收率3%，进项不可抵扣）',
+            action: { type: 'taxType', tax: 'small' },
+            recommended: true,
+            teach: '小规模：增值税=销售额×3%，采购进项不能抵扣，核算简单、税负低（适合小本经营）。',
+          },
+          {
+            label: '一般纳税人（税率13%，进项可抵扣）',
+            action: { type: 'taxType', tax: 'general' },
+            teach: '一般纳税人：增值税=销项-进项，采购拿到专票可抵扣，适合进项多、规模大的企业；但核算更复杂。',
+          },
+        ],
+      },
+      {
+        npc: '导师：营业执照到手！你的"实收资本"正式记在账上了。接下来要租店面、买设备。',
+        options: [],
+        teach: '实收资本是股东投入的本钱，属于所有者权益，和公司借钱（负债）性质完全不同。',
+      },
+    ],
+  },
+  {
+    chapter: 2,
+    title: '第二章 · 筹备开业',
+    tier: 'primary',
+    steps: [
+      {
+        npc: '房东：店面谈妥啦！房租怎么付你定——押一付一最省现金压力；要是一次多付几个月，我给你租金折扣，长期更划算。押金都按一个月原价收。',
+        options: [
+9 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+          {
+            label: '押一付一（现金流压力最小，无折扣）',
+            action: { type: 'rent', months: 1, discount: 0 },
+            teach: '少付：只预付 1 个月房租，现金流出最小、资金压力小；但没有折扣，单位租金贵。',
+          },
+          {
+            label: '押一付三（预付3个月，享5%租金折扣）',
+            action: { type: 'rent', months: 3, discount: 0.05 },
+            recommended: true,
+            teach: '适度预付：一次付 3 个月房租，房东给 5% 折扣，单价更便宜；代价是当下多占一笔现金（挂"预付账款-房租"，按月摊销进费用）。',
+          },
+          {
+            label: '押一付六（预付6个月，享12%租金折扣）',
+            action: { type: 'rent', months: 6, discount: 0.12 },
+            teach: '多付：一次付 6 个月，折扣最高(12%)，长期最省租金；但当下现金流出大，资金链要绷得住，否则易断。',
+          },
+        ],
+      },
+      {
+        npc: '设备商：制冰机、封口机、电脑，一套下来要花钱，但能用很多年。',
+        options: [
+          {
+            label: '购置固定资产',
+            action: { type: 'fixed', ratio: 0.15 },
+            teach: '设备是固定资产，不能一次性算费用，要按月计提折旧分摊到各期（权责发生制）。',
+          },
+        ],
+      },
+      {
+        npc: '导师：工厂要建生产线、科技公司要立项研发——不同公司，筹备阶段的科目差别就出来了。',
+        options: [],
+        teach: '工厂筹备进"在建工程/固定资产"；科技公司研发可费用化(研发费用)或资本化(无形资产)。',
+      },
+    ],
+  },
+  {
+    chapter: 3,
+    title: '第三章 · 日常经营',
+    tier: 'primary',
+    steps: [
+      {
+        npc: (s) => {
+          const cn = s?.co?.name || '公司'
+          const pe = s?.projectEmoji || ''
+          const pn = s?.projectName || ''
+          return `供应商：进货啦！现金付还是赊账？${cn}${pe ? `·${pe}${pn}` : ''}常赊购形成"应付账款"。`
+        },
+        options: [
+          {
+            label: '现金进货上架',
+10 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+            action: { type: 'purchase', amt: 2 },
+            teach: '进货：借 库存商品(或原材料) / 贷 银行存款。商品还在手里，是资产不是费用。',
+          },
+          {
+            label: '赊账进货（形成应付账款）',
+            action: { type: 'purchaseCredit', amt: 2 },
+            teach: '赊购：借 库存商品 / 贷 应付账款。欠别人的钱是负债，到期要还。',
+          },
+        ],
+      },
+      {
+        npc: (s) => {
+          const cn = s?.co?.name || '公司'
+          const pid = s?.projectId
+          const cid = s?.co?.id
+          const pe = s?.projectEmoji || ''
+          const pn = s?.projectName || ''
+          if (cid === 'shop') return `顾客：${pid === 'milktea' ? '来一杯经典奶茶' : pid === 'bake' ? '来一份烘焙甜品' : '来一杯鲜果茶'}！扫码支付。`
+          if (cid === 'tech') return `客户：${pid === 'game' ? '游戏充值到账' : pid === 'ai' ? 'AI 模型调用结算' : 'SaaS 续费到账'}，在线付款。`
+          if (cid === 'factory') return `采购商：${pid === 'auto' ? '汽车配件' : pid === 'cloth' ? '服装面料' : '食品加工料'}这批货验收通过，款项已转账。`
+          if (cid === 'trade') return `买家：${pid === 'elec' ? '电子数码' : pid === 'energy' ? '能源化工' : '农副产品'}已签收，款项已到账。`
+          if (cid === 'listed') return `客户：${pid === 'finance' ? '金融服务费' : pid === 'infra' ? '工程款' : '连锁零售门店'}结算到账。`
+          return `顾客：${pn ? `(${pe}${pn}) ` : ''}成交！扫码支付。`
+        },
+        options: [
+          {
+            label: '卖货收款',
+            action: { type: 'sale', amt: 3, cost: 1.2 },
+            teach: '收款：借 银行存款 / 贷 主营业务收入、应交税费。同时系统自动结转成本：借 主营业务成本 / 贷 库存商品。',
+          },
+        ],
+      },
+      {
+        npc: 'HR：该发工资了，这是"应付职工薪酬"。',
+        options: [
+          {
+            label: '计提并发放工资',
+            action: { type: 'salary', amt: 0.5 },
+            teach: '工资：借 管理费用-工资 / 贷 应付职工薪酬。先计提后发放，体现权责发生制。',
+          },
+        ],
+      },
+      {
+        npc: (s) => s.co.id === 'tech'
+          ? '市场/研发部：要不要加大投入？高投入能放大后续营收，但要先掏真金白银；低投入稳一点，增长慢。'
+          : '市场部：要不要投一笔营销/门店推广？高投入能放大后续营收，但要先掏真金白银；低投入稳一点，增长慢。',
+        options: [
+          {
+            label: '高投入（前置成本，后续营收+25%）',
+            action: { type: 'invest', kind: 'market', level: 'high' },
+11 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+            teach: '高投入：当期确认一笔营销投入（科技公司计入「研发费用」科目，其他公司计入「销售费用」），减少利润与现金，但未来每笔销售规模放大 25%，高风险高回报。',
+          },
+          {
+            label: '低投入（无前置成本，营收小幅提升）',
+            action: { type: 'invest', kind: 'market', level: 'low' },
+            recommended: true,
+            teach: '低投入：不花前置成本，后续营收小幅提升，更稳健，适合现金流紧张时。',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    chapter: 4,
+    title: '第四章 · 月末结账',
+    tier: 'middle',
+    steps: [
+      {
+        npc: '导师：到月末了！系统自动帮你做两件大事，这是真实会计的硬规矩。',
+        options: [],
+        teach: '月末自动：① 计提折旧（借 管理费用-折旧 / 贷 累计折旧）② 借款计息（借 财务费用-利息 / 贷 应付利息）。',
+      },
+      {
+        npc: '导师：看你有没有借款——如果有，本月起每月利息都要计提，哪怕钱还没付出去！',
+        options: [
+          {
+            label: '执行月末结账（折旧+计息+工资房租）',
+            action: { type: 'monthEnd' },
+            teach: '权责发生制：费用按受益期确认，不看出没出现金。所以没付的利息也要先记上。',
+          },
+        ],
+      },
+      {
+        npc: '税务：算算增值税（销项-进项）和企业所得税（利润×25%）。',
+        options: [
+          {
+            label: '计提税金',
+            action: { type: 'tax' },
+            teach: '增值税是价外税，企业所得税 = 应纳税所得额 × 25%，都计入"应交税费"。',
+          },
+        ],
+      },
+      {
+        npc: '导师：把收入费用结转到"本年利润"，这一月的成果就出来了。',
+        options: [
+          {
+            label: '结转本年利润',
+            action: { type: 'closeProfit' },
+            teach: '结转：收入、费用转入本年利润，贷方余额盈利、借方余额亏损。利润表由此而生。',
+          },
+12 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+        ],
+      },
+    ],
+  },
+  {
+    chapter: 5,
+    title: '第五章 · 编制报表',
+    tier: 'middle',
+    steps: [
+      {
+        npc: '导师：期末了，出三张表。先出资产负债表——记住：资产 = 负债 + 所有者权益，必须平！',
+        options: [
+          {
+            label: '生成资产负债表',
+            action: { type: 'report', which: 'balance' },
+            teach: '资产负债表是时点表。货币资金、存货、固定资产(净值)在左；借款、应付、实收资本、本年利润在右。',
+          },
+        ],
+      },
+      {
+        npc: '导师：再看利润表：收入 - 成本 - 费用 - 税 = 净利润。',
+        options: [
+          {
+            label: '生成利润表',
+            action: { type: 'report', which: 'income' },
+            teach: '利润表是时期表，从上到下：营业收入→营业利润→净利润。',
+          },
+        ],
+      },
+      {
+        npc: '导师：三张表要能互相印证。利润表的净利润，最后会流进资产负债表的"未分配利润"。',
+        options: [
+          {
+            label: '查看报表勾稽',
+            action: { type: 'reportCheck' },
+            teach: '勾稽关系：净利润→所有者权益；现金净变动→货币资金。不平就是做错了。',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    chapter: 6,
+    title: '第六章 · 扩张与决策',
+    tier: 'senior',
+    steps: [
+      {
+        npc: '投资人：生意不错，要扩店吗？再借一笔，还是用利润滚雪球？',
+        options: [
+          {
+13 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+            label: '再借款扩张（加杠杆）',
+            action: { type: 'expand', borrow: 5 },
+            teach: '再借款：借 银行存款 / 贷 短期借款。扩规模也扩了风险——利息更重了。',
+          },
+          {
+            label: '用留存收益扩张（稳健）',
+            action: { type: 'expand', own: 5 },
+            teach: '用利润再投入不增加负债，财务更稳健，但扩张速度慢。',
+          },
+        ],
+      },
+      {
+        npc: '分析师：用杜邦分析法看看你的 ROE = 净利率 × 资产周转率 × 权益乘数。',
+        options: [
+          {
+            label: '做财务分析与诊断',
+            action: { type: 'analyze' },
+            teach: '高杠杆(权益乘数大)能拉高ROE，但现金为负就破产。盈利质量看经营现金流。',
+          },
+        ],
+      },
+      {
+        npc: '导师：恭喜走到这里！你已完整经历了"创立→经营→结账→报表→决策"的全流程。',
+        options: [
+          {
+            label: '完成开业挑战',
+            action: { type: 'next' },
+            teach: '真实会计就是这样：每一笔业务都是分录，每个月都要结账，每年都要出表。你已经是入门会计了！接下来进入持续经营，一月一月开下去。',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    chapter: 7,
+    title: '第七章 · 持续经营',
+    tier: 'senior',
+    loop: true,
+    steps: [
+      {
+        npc: '导师：开业只是开始！真正开公司要一个月接一个月地经营。每过一个月，你会经历"进货→卖货→发工资→缴税→月末结账"。行情每年会变：丰年收入高、歉年收入低。准备好了就开始新的一月吧！',
+        options: [
+          {
+            label: '▶️ 开始第 1 个经营月',
+            action: { type: 'loopStart' },
+            teach: '循环经营：每个月都要做一遍完整业务，月末系统自动结账。坚持越久，越能体会"权责发生制"和"现金流"的较劲。丰年大胆投入、歉年保守经营。',
+          },
+        ],
+      },
+      {
+14 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+        npc: '供应商：新的一月，补点货吧？现金付还是赊账随你。',
+        options: [
+          {
+            label: '现金进货上架',
+            action: { type: 'purchase' },
+            teach: '进货：借 库存商品 / 贷 银行存款。商品在手里是资产，没卖出去不算费用。',
+            demoEntries: [{ side: 'debit', account: '库存商品', amount: 2 }, { side: 'credit', account: '银行存款', amount: 2 }],
+          },
+          {
+            label: '赊账进货（形成应付账款）',
+            action: { type: 'purchaseCredit' },
+            teach: '赊购：借 库存商品 / 贷 应付账款。欠的钱是负债，记得下月有钱要还。',
+            demoEntries: [{ side: 'debit', account: '库存商品', amount: 2 }, { side: 'credit', account: '应付账款', amount: 2 }],
+          },
+        ],
+      },
+      {
+        npc: (s) => {
+          const cn = s?.co?.name || '公司'
+          const pid = s?.projectId
+          const cid = s?.co?.id
+          const pe = s?.projectEmoji || ''
+          const pn = s?.projectName || ''
+          let line
+          if (cid === 'shop') line = `顾客：老样子，${pid === 'milktea' ? '经典奶茶' : pid === 'bake' ? '烘焙甜品' : '鲜果茶'}一份！扫码支付。`
+          else if (cid === 'tech') line = `客户：${pid === 'game' ? '游戏充值到账' : pid === 'ai' ? 'AI 调用结算' : 'SaaS 续费到账'}，已付款。`
+          else if (cid === 'factory') line = `采购商：${pid === 'auto' ? '汽车配件' : pid === 'cloth' ? '服装面料' : '食品加工料'}验收入库，款已转账。`
+          else if (cid === 'trade') line = `买家：${pid === 'elec' ? '电子数码' : pid === 'energy' ? '能源化工' : '农副产品'}已签收，款项已到账。`
+          else if (cid === 'listed') line = `客户：${pid === 'finance' ? '金融服务费' : pid === 'infra' ? '工程款' : '连锁零售门店'}结算到账。`
+          else line = `顾客：${pn ? `(${pe}${pn}) ` : ''}成交！扫码支付。`
+          return `${line}本年行情会影响你的营业额——丰年门庭若市，歉年门可罗雀。`
+        },
+        options: [
+          {
+            label: '卖货收款',
+            action: { type: 'sale' },
+            teach: '收款：借 银行存款 / 贷 主营业务收入、应交税费；系统自动结转成本：借 主营业务成本 / 贷 库存商品。丰年营收会被放大，歉年缩水。',
+            demoEntries: [
+              { side: 'debit', account: '银行存款', amount: 3 },
+              { side: 'credit', account: '主营业务收入', amount: 3 },
+              { side: 'credit', account: '应交税费-销项', amount: 0.1 },
+              { side: 'debit', account: '主营业务成本', amount: 1.2 },
+              { side: 'credit', account: '库存商品', amount: 1.2 },
+            ],
+          },
+        ],
+      },
+      {
+        npc: 'HR：又到发工资的时候了，这是"应付职工薪酬"。你也可以选择拖欠——但那是一条邪路。',
+        options: [
+15 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+          {
+            label: '计提并发放工资（正道）',
+            action: { type: 'salary' },
+            teach: '工资：借 管理费用-工资 / 贷 应付职工薪酬。先计提后发放，权责发生制。准时发工资，企业信誉才好。',
+            demoEntries: [{ side: 'debit', account: '管理费用-工资', amount: 0.5 }, { side: 'credit', account: '应付职工薪酬', amount: 0.5 }],
+          },
+          {
+            label: '😈 拖欠工资不发（邪道）',
+            action: { type: 'evilSalary' },
+            teach: '邪道：当月省下工资成本，但欠薪挂账，劳动稽查随时可能爆发，且邪道玩得越多越危险。',
+          },
+        ],
+      },
+      {
+        npc: '财务：本月有收入，要到税务局申报缴纳了。依法纳税是义务，但国家给了很多"合法节税"的优惠——用足政策是正道；动歪脑筋则是邪路。',
+        options: [
+          {
+            label: '依法纳税 + 用足合法优惠（正道·合理避税）',
+            action: { type: 'tax', plans: ['smallBenefit', 'rndDeduction', 'vatSmall'] },
+            recommended: true,
+            teach: '合理避税≠偷税！合法筹划：①小型微利优惠（年所得≤300万所得税仅5%）；②研发费用加计扣除100%（花1元研发税前扣2元，仅科技类企业有研发活动可享受）；③小规模季度≤30万免增值税。都是国家给的红利，用足不违规。',
+          },
+          {
+            label: '只做研发加计扣除（科技公司专属轻量筹划）',
+            action: { type: 'tax', plans: ['rndDeduction'] },
+            teach: '研发加计：把研发费用在税前扣除翻倍，少缴所得税，鼓励创新，完全合法。注意：仅科技类企业（软件/游戏/AI 研发）有符合条件的研发活动，其他行业（如连锁零售、工厂、贸易）选择会被提示「无符合条件的研发活动」，无法享受。',
+          },
+          {
+            label: '😈 税务调账改低应纳税额（邪道）',
+            action: { type: 'evilTaxAdjust', ratio: 0.5 },
+            teach: '邪道·调账：做分录把本期应纳税额做低，账面少缴。但调账次数越多，被税务局稽查的概率越高；一旦查出，要补回税款+0.5倍罚款。',
+          },
+          {
+            label: '😈 直接拖欠税款不缴（邪道）',
+            action: { type: 'evilTaxOwe' },
+            teach: '邪道·拖欠：税款挂账不缴，从拖欠之日起按日加收万分之五滞纳金（按月约1.5%），越拖越贵，且被稽查概率随拖欠月数上升。',
+          },
+          {
+            label: '😈 虚开发票冲成本（邪道）',
+            action: { type: 'evilFakeInvoice' },
+            teach: '邪道：虚增成本少缴税，是刑事红线，随时可能爆雷。邪道越多，出事概率越高。',
+          },
+        ],
+      },
+      {
+        npc: '导师：本月业务做完，系统帮你结账（折旧+计息+房租摊销），然后看你要不要继续。',
+        options: [
+          {
+            label: '执行月末结账',
+            action: { type: 'monthEnd' },
+16 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+            teach: '月末自动：计提折旧、借款计息、摊销预付房租。费用按受益期确认，不看出没出现金。每年末会检测邪道是否爆雷。',
+          },
+        ],
+      },
+      {
+        npc: '股东会：今年赚到钱啦！要不要从税后利润里给股东分红？分红要代扣 20% 股息红利个税。分红能让股东落袋为安，但会减少公司账面现金。',
+        options: [
+          {
+            label: '💰 分红 30%（落袋为安）',
+            action: { type: 'dividend', ratio: 0.3 },
+            teach: '分红：借 利润分配-应付股利、应付股利 / 贷 银行存款，同时代扣个税（借 应交税费-个人所得税）。分红后"累计分红"会显示在顶部。分红减少现金但回报股东，是正常经营行为。',
+          },
+          {
+            label: '💰 分红 50%（多分些）',
+            action: { type: 'dividend', ratio: 0.5 },
+            teach: '多分红：股东拿得更多，但公司留存现金更少，扩张与抗风险能力变弱。需在"回报股东"和"公司发展"间平衡。',
+          },
+          {
+            label: '📈 暂不分红（利润留存再投入）',
+            action: { type: 'dividend', ratio: 0 },
+            teach: '不分红：利润留在公司（未分配利润），可用于下月扩张或应对歉年，财务更稳健，但股东当期没有现金回报。',
+          },
+        ],
+      },
+      {
+        npc: '导师：这个月经营结束啦。是咬牙继续开下去，还是见好就收、结业清算？撑得越久规模越大，但现金一旦为负就破产。本年行情也有可能切换（丰年↔歉年）。',
+        options: [
+          {
+            label: '💪 继续经营下一个月',
+            action: { type: 'loopContinue' },
+            teach: '继续经营：时间往前走一个月，重复"进-销-薪-税-结"。撑得越久，累计利润和规模越可观，但现金一旦为负就破产。每年行情会重掷。',
+          },
+          {
+            label: '🏁 结业清算（出最终报表）',
+            action: { type: 'close' },
+            teach: '结业：把剩余资产变现、还清负债，算出最终净利润与现金，给出经营成绩单。',
+          },
+        ],
+      },
+    ],
+  },
+]
+/* ===== 文件: data/tiers.js ===== */
+export const TIERS = [
+  { id: 'primary', name: '初级会计', color: 'var(--accent)', desc: '创立公司 · 凭证记账 · 资产负债表' },
+  { id: 'middle', name: '中级会计', color: 'var(--primary)', desc: '成本结转 · 折旧计息 · 利润表' },
+  { id: 'senior', name: '高级会计', color: 'var(--gold)', desc: '合并报表 · 财务分析 · 扩张决策' },
+]
+/* ===== 文件: lib/engine.js ===== */
+import { getCompany } from '../data/companies.js'
+17 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+export const fmtW = (v) => Number((v || 0).toFixed(1)).toFixed(1)
+const INITIAL_BALANCES = () => ({
+  银行存款: 0, 库存现金: 0, 应收账款: 0, 应付账款: 0, 原材料: 0, 库存商品: 0,
+  生产成本: 0, 固定资产: 0, 累计折旧: 0, 累计摊销: 0, 无形资产: 0, 研发支出: 0,
+  预付账款: 0, 短期借款: 0, 应付职工薪酬: 0, 应付利息: 0, 应交税费: 0,
+  实收资本: 0, 股本: 0, 本年利润: 0, 主营业务收入: 0, 主营业务成本: 0,
+  管理费用: 0, 财务费用: 0, 研发费用: 0, 所得税费用: 0,
+})
+const NATURE = {
+  银行存款: true, 库存现金: true, 应收账款: true, 原材料: true, 库存商品: true,
+  生产成本: true, 固定资产: true, 无形资产: true, 研发支出: true, 预付账款: true,
+  主营业务成本: true, 管理费用: true, 财务费用: true, 研发费用: true, 所得税费用: true,
+  短期借款: false, 应付账款: false, 应付职工薪酬: false, 应付利息: false, 应交税费: false,
+  实收资本: false, 股本: false, 本年利润: false, 累计折旧: false, 累计摊销: false, 主营业务收入: false,
+}
+function natureOf(account) {
+  if (NATURE[account] !== undefined) return NATURE[account]
+  const parent = account.split('-')[0]
+  return NATURE[parent] !== undefined ? NATURE[parent] : true
+}
+function bump(balances, account, side, amount) {
+  const isDebitNormal = natureOf(account)
+  let delta = amount
+  if (side === 'credit') delta = -delta
+  if (!isDebitNormal) delta = -delta
+  balances[account] = (balances[account] || 0) + delta
+  return delta
+}
+function pnlCat(account) {
+  if (account === '主营业务收入' || account.startsWith('主营业务收入')) return 'revenue'
+  if (account === '主营业务成本' || account.startsWith('主营业务成本')) return 'cost'
+  if (account === '管理费用' || account.startsWith('管理费用')) return 'mgmt'
+  if (account === '财务费用' || account.startsWith('财务费用')) return 'fin'
+  if (account === '研发费用' || account.startsWith('研发费用')) return 'rd'
+  if (account === '所得税费用' || account.startsWith('所得税费用')) return 'tax'
+  return null
+}
+export const DIFFICULTY = {
+  easy: { id: 'easy', name: '简单模式', lives: 3, autoFix: true, randFund: false, selfEntry: false,
+    hint: '系统给出分录，错了自动修正，容错 3 次' },
+  hard: { id: 'hard', name: '困难模式', lives: 1, autoFix: false, randFund: true, selfEntry: true,
+    hint: '自己写分录，金额随机，错 1 次扣容错，必须做调整分录' },
+  hardcore: { id: 'hardcore', name: '硬核模式', lives: 0, autoFix: false, randFund: true, selfEntry: true,
+    hint: '错 1 次即失败，学不到最终关' },
+}
+export const TAX = {
+  VAT_SMALL: 0.03,     // 小规模纳税人征收率
+  VAT_GENERAL: 0.13,   // 一般纳税人税率（货物）
+  CIT: 0.25,           // 企业所得税标准税率
+  CIT_SMALL: 0.05,     // 小型微利企业优惠（年应税所得额≤300万部分，实际税负5%）
+18 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  RND_SUPER: 1.0,      // 研发费用加计扣除比例（100%，即每花1元研发，税前扣除2元）
+  FORCE_THRESHOLD: 500, // 年应税销售额超 500万 强制登记为一般纳税人
+}
+export const TAX_PLANS = {
+  smallBenefit: { id: 'smallBenefit', name: '小型微利优惠', desc: '年应税所得≤300万，所得税按5%而非25%' },
+  rndDeduction: { id: 'rndDeduction', name: '研发加计抵扣', desc: '研发费用加计扣除100%，税前扣除翻倍' },
+  vatSmall: { id: 'vatSmall', name: '小规模免税', desc: '小规模纳税人季度销售额≤30万免征增值税' },
+}
+export function createCompany(companyId, diffId = 'easy', projectId = null) {
+  const base = getCompany(companyId)
+  const projects = base.projects || []
+  const proj = projects.find((p) => p.id === projectId) || projects[0] || null
+  const co = proj && proj.econ
+    ? { ...base, economics: { ...base.economics, ...proj.econ } }
+    : base
+  const balances = INITIAL_BALANCES()
+  const state = {
+    companyId, co, month: 0, balances, ledger: [], loans: [],
+    vouchers: [], errors: [], lives: DIFFICULTY[diffId].lives, difficulty: diffId,
+    penalty: 0, history: [], failed: false, failedReason: '', scale: 1,
+    taxType: 'small', cumSales: 0, vatOutput: 0, vatInput: 0,
+    forcedGeneral: false, boost: 0, choices: {},
+    projectId: proj ? proj.id : null,
+    projectName: proj ? proj.name : null,
+    projectEmoji: proj ? proj.emoji : null,
+    year: 1,                       // 当前经营年份（1 起）
+    yearMood: 'normal',            // 本年行情：good 丰年 / bad 歉年 / normal
+    evilCount: 0,                  // 累计"邪道玩法"次数
+    evilEvents: [],                // 已埋下的雷：{atYear, type}（恶果延迟爆发）
+    skippedTaxMonths: 0,           // 累计未缴税月数（用于爆雷时补缴+罚款）
+    wageDiscontent: 0,             // 隐藏不满度 0~100（拖欠工资累积，影响效率）
+    wageStrikes: 0,                // 罢工黑历史次数（越多越易再罢工、损失越大）
+    wageUnpaid: 0,                 // 累计欠薪额（万）
+    strikeThisMonth: false,        // 本月是否发生罢工（影响本月效率与成本）
+    pendingStrike: null,           // 罢工待处理：{month} → UI 弹窗三选一
+    taxAdjusts: 0,                 // 调账改应纳税额次数（产生分录，按次数定稽查概率）
+    taxAdjustAmount: 0,            // 累计调账虚减的税额（被查到需补回）
+    taxOwed: 0,                    // 直接拖欠的累计税额（产生每日万分之五滞纳金）
+    taxLateFee: 0,                 // 累计滞纳金（万）
+    auditHits: 0,                  // 被税务局查处次数（黑历史）
+    totalDividend: 0,              // 累计已分红净额（股东实得）
+    quarterRevenue: 0,             // 本季度累计营收（用于小规模免税判定）
+    usedTaxPlans: [],              // 已采用的合法筹划手段 id 列表
+    cum: { revenue: 0, cost: 0, mgmt: 0, fin: 0, rd: 0, tax: 0 }, // 累计损益（实时追踪，供利润表展示）
+    receivables: [],               // 应收账款（赊销，F）
+    payablesDue: [],               // 到期应付账款（F）
+    reachedMilestones: [],         // 已达成里程碑 id（D）
+    choiceLog: [],                 // 决策记录（B）
+    eventBuff: {},                 // 当月随机事件数值缓冲（C）
+    monthOrders: [],               // 当月订单（E）
+19 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+    lastEvent: null,               // 最近一次随机事件（C）
+  }
+  return state
+}
+export function applyFunding(state, choice) {
+  const co = state.co
+  const own = co.initCash                       // 本金（股东出资）固定
+  let borrow
+  if (choice === 'low') borrow = +(own * 0.7).toFixed(1)
+  else if (choice === 'part') borrow = +(own * 0.3).toFixed(1)
+  else borrow = 0
+  state.balances['银行存款'] = +(own + borrow).toFixed(1)  // 可动用资金 = 本金 + 借款
+  state.balances['实收资本'] = own
+  state.balances['短期借款'] = borrow
+  state.scale = +((own + borrow) / own).toFixed(3)         // 借款放大经营规模
+  state.loans = borrow > 0 ? [{ principal: borrow, rate: co.economics.interestRate, since: 1 }] : []
+  state.choices.leverage = choice
+  return state
+}
+export function applyExpand(state, { borrow = 0, own = 0 } = {}) {
+  const co = state.co
+  if (borrow > 0) {
+    applyBusiness(state, mk('银行存款', borrow, '短期借款', borrow, '扩张：银行借款'), state.month)
+    state.loans.push({ principal: borrow, rate: co.economics.interestRate, since: state.month + 1 })
+  }
+  if (own > 0) {
+    applyBusiness(state, mk('银行存款', own, '实收资本', own, '扩张：利润再投入'), state.month)
+  }
+  state.scale = +((state.scale || 1) + (borrow + own) / co.initCash).toFixed(3)
+  return state
+}
+export function applyTaxType(state, type) {
+  state.taxType = type === 'general' ? 'general' : 'small'
+  state.choices.taxType = state.taxType
+  return state
+}
+export function vatOnSale(state, saleAmt, revenueAccount) {
+  const rate = state.taxType === 'general' ? TAX.VAT_GENERAL : TAX.VAT_SMALL
+  const vat = +(saleAmt * rate).toFixed(2)
+  state.cumSales = +(state.cumSales + saleAmt).toFixed(2)
+  state.vatOutput = +(state.vatOutput + vat).toFixed(2)
+  const entries = [
+    { side: 'debit', account: '银行存款', amount: +(saleAmt + vat).toFixed(2) },
+    { side: 'credit', account: revenueAccount, amount: saleAmt },
+    { side: 'credit', account: '应交税费-销项', amount: vat },
+  ]
+  return { entries, vat, saleAmt, rate }
+}
+export function vatOnPurchase(state, purAmt, onCredit) {
+  const rate = state.taxType === 'general' ? TAX.VAT_GENERAL : 0
+20 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  const vat = +(purAmt * rate).toFixed(2)
+  state.vatInput = +(state.vatInput + vat).toFixed(2)
+  const debit = [{ side: 'debit', account: '库存商品', amount: purAmt }]
+  if (vat > 0) debit.push({ side: 'debit', account: '应交税费-进项', amount: vat })
+  const credit = onCredit
+    ? [{ side: 'credit', account: '应付账款', amount: +(purAmt + vat).toFixed(2) }]
+    : [{ side: 'credit', account: '银行存款', amount: +(purAmt + vat).toFixed(2) }]
+  return { entries: [...debit, ...credit], vat }
+}
+export function maybeForceGeneral(state) {
+  if (state.taxType === 'small' && state.cumSales > TAX.FORCE_THRESHOLD) {
+    state.taxType = 'general'
+    state.forcedGeneral = true
+    state.choices.taxType = 'general'
+    return true
+  }
+  return false
+}
+export function applyInvest(state, kind, level) {
+  state.choices[kind] = level
+  if (kind === 'market') {
+    if (level === 'high') {
+      const cost = +(state.co.economics.dealSize * (state.scale || 1) * 0.5).toFixed(1)
+      applyBusiness(state, mk('银行存款', cost, '管理费用-营销', cost, '高投入营销'), state.month)
+      state.boost = (state.boost || 0) + 0.25
+    } else {
+      state.boost = (state.boost || 0) + 0.05
+    }
+  }
+  return state
+}
+export function settleTax(state, plans = []) {
+  const planSet = new Set(plans)
+  let vatPayable = state.taxType === 'general'
+    ? +(state.vatOutput - state.vatInput).toFixed(2)
+    : +state.vatOutput.toFixed(2)
+  vatPayable = Math.max(0, vatPayable)
+  if (state.taxType !== 'general' && planSet.has('vatSmall') && vatPayable > 0 && (state.quarterRevenue || 0) <= 30) {
+    vatPayable = 0
+    plans = plans.filter((p) => p !== 'vatSmall')
+    planSet.delete('vatSmall')
+  }
+  if (planSet.has('rndDeduction') && state.co?.id !== 'tech') {
+    planSet.delete('rndDeduction')
+    plans = plans.filter((p) => p !== 'rndDeduction')
+  }
+  let taxableProfit = state.balances['本年利润'] || 0
+  if (planSet.has('rndDeduction')) {
+    const rnd = state.balances['研发费用'] || 0
+    taxableProfit = +(taxableProfit - rnd).toFixed(2) // 加计100%即再扣一次研发费用
+21 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  }
+  const useSmallBenefit = planSet.has('smallBenefit') && taxableProfit > 0 && taxableProfit <= 300
+  const citRate = useSmallBenefit || (taxableProfit > 0 && taxableProfit <= 300) ? TAX.CIT_SMALL : TAX.CIT
+  const cit = +(Math.max(0, taxableProfit) * citRate).toFixed(2)
+  const entries = []
+  if (vatPayable > 0) {
+    entries.push(...mk('应交税费-销项', state.vatOutput, '应交税费-未交增值税', state.vatOutput, '结转销项税额'))
+    if (state.taxType === 'general' && state.vatInput > 0) {
+      entries.push(...mk('应交税费-未交增值税', state.vatInput, '应交税费-进项', state.vatInput, '结转进项税额'))
+    }
+    entries.push(...mk('应交税费-未交增值税', vatPayable, '银行存款', vatPayable, '缴纳增值税'))
+  }
+  if (cit > 0) {
+    entries.push(...mk('所得税费用', cit, '应交税费-所得税', cit, '计提企业所得税' + (useSmallBenefit ? '（小微优惠）' : '')))
+    entries.push(...mk('本年利润', cit, '所得税费用', cit, '结转所得税费用至本年利润'))
+    entries.push(...mk('应交税费-所得税', cit, '银行存款', cit, '缴纳企业所得税'))
+  }
+  applyBusiness(state, entries, '缴纳税金' + (plans.length ? '（含合法筹划）' : ''), state.month)
+  state.vatOutput = 0; state.vatInput = 0
+  state.quarterRevenue = 0
+  return { vatPayable, cit, taxType: state.taxType, forced: state.forcedGeneral, plans: plans.filter((p) => planSet.has(p)) }
+}
+export function declareDividend(state, ratio = 0.3) {
+  const profit = state.balances['本年利润'] || 0
+  if (profit <= 0) {
+    return { ok: false, amount: 0, msg: '本年无可供分配的利润，无法分红' }
+  }
+  const div = +((profit * ratio).toFixed(2))
+  if (div <= 0) return { ok: false, amount: 0, msg: '分红金额为0' }
+  const divTax = +(div * 0.2).toFixed(2)
+  const net = +(div - divTax).toFixed(2)
+  const entries = [
+    ...mk('应付股利', div, '银行存款', div, `宣告并支付股东分红${Math.round(ratio * 100)}%`),
+    ...mk('利润分配-应付股利', div, '应付股利', div, '结转应付股利'),
+    ...mk('应交税费-个人所得税', divTax, '银行存款', divTax, '代扣股息红利个税20%'),
+  ]
+  applyBusiness(state, entries, `股东分红（${Math.round(ratio * 100)}%）`, state.month)
+  state.totalDividend = +(state.totalDividend || 0) + net
+  return { ok: true, amount: net, gross: div, tax: divTax, msg: `分红 ${fmtW(net)}万（代扣个税 ${fmtW(divTax)}万）` }
+}
+function mk(d, da, c, ca, desc) {
+  return [
+    { side: 'debit', account: d, amount: da, desc },
+    { side: 'credit', account: c, amount: ca, desc },
+  ]
+}
+function withMeta(e, month, i) {
+  return { desc: e.desc || '', debit: e.side === 'debit' ? e.account : '', credit: e.side === 'credit' ? e.account : '', amt: e.amount, month, idx: i }
+}
+export function applyBusiness(state, entries, desc, month) {
+22 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  const ledger = [...state.ledger]
+  entries.forEach((e) => {
+    const delta = bump(state.balances, e.account, e.side, e.amount)
+    const cat = pnlCat(e.account)
+    if (cat && state.cum) state.cum[cat] = +((state.cum[cat] || 0) + delta).toFixed(2)
+  })
+  entries.forEach((e, i) => ledger.push(withMeta(e, month ?? state.month, ledger.length + i)))
+  state.ledger = ledger
+  return state
+}
+export function recordVoucher(state, { desc, actual, expected, month }) {
+  const correct = gradeEntries(actual, expected)
+  const v = { id: state.vouchers.length + 1, month: month ?? state.month, desc, actual, expected, correct }
+  state.vouchers.push(v)
+  if (!correct) state.errors.push(v.id)
+  return v
+}
+export function gradeEntries(actual, expected) {
+  if (!actual || actual.length !== expected.length) return false
+  const norm = (list) => list.map((e) => ({ side: e.side, account: e.account, amount: +e.amount }))
+    .sort((a, b) => (a.side + a.account).localeCompare(b.side + b.account) || a.amount - b.amount)
+  const a = norm(actual), b = norm(expected)
+  return a.every((e, i) => e.side === b[i].side && e.account === b[i].account && Math.abs(e.amount - b[i].amount) < 0.001)
+}
+export function monthEnd(state, opts = {}) {
+  const co = state.co
+  const m = state.month + 1
+  state.month = m
+  const newEntries = []
+  co.fixedAssets.forEach((fa) => newEntries.push(...mk('管理费用-折旧', fa.monthlyDep, '累计折旧', fa.monthlyDep, `计提${fa.name}折旧`)))
+  state.loans.forEach((loan) => {
+    const interest = +(loan.principal * loan.rate).toFixed(2)
+    if (m >= loan.since) newEntries.push(...mk('财务费用-利息', interest, '应付利息', interest, `计提借款利息(月${m})`))
+  })
+  const prepRent = state.choices?.rentMonths
+  if (prepRent && prepRent > 0 && (state.balances['预付账款-房租'] || 0) > 0) {
+    const grossMonthly = co.economics.rent * (state.scale || 1)
+    const discount = state.choices.rentDiscount || 0
+    const monthlyRent = +(grossMonthly * (1 - discount)).toFixed(2)
+    const remain = state.balances['预付账款-房租']
+    const amort = remain >= monthlyRent ? monthlyRent : remain
+    if (amort > 0) {
+      newEntries.push(...mk('管理费用-房租', amort, '预付账款-房租', amort, `摊销预付房租(月${m})`))
+      state.balances['预付账款-房租'] = +(remain - amort).toFixed(2)
+    }
+  }
+  applyBusiness(state, newEntries, `第${m}月末结账`, m)
+  const rev = sumAccount(state.balances, '主营业务收入')
+  const costs = sumAccount(state.balances, '主营业务成本') + sumAccount(state.balances, '管理费用') +
+    sumAccount(state.balances, '财务费用') + sumAccount(state.balances, '研发费用') + sumAccount(state.balances, '所得税费用')
+23 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  const monthProfit = +(rev - costs).toFixed(2)
+  state.balances['本年利润'] = +((state.balances['本年利润'] || 0) + monthProfit).toFixed(2)
+  for (const k of ['主营业务收入', '主营业务成本', '管理费用', '财务费用', '研发费用', '所得税费用', '管理费用-折旧', '管理费用-房租', '管理费用-稽查', '管理费用-招聘', '财务费用-利息', '营业外收入-补贴']) {
+    if (state.balances[k] != null) state.balances[k] = 0
+  }
+  state.history.push({ month: m, cash: state.balances['银行存款'], profit: state.balances['本年利润'], revenue: rev, totalAssets: totalAssets(state.balances) })
+  if (m > 1 && m % 12 === 1) {
+    state.year = (state.year || 1) + 1
+    state.yearMood = rollYearMood()
+  }
+  accrueTaxLateFee(state)
+  rollStrike(state)
+  taxAudit(state, m)
+  maybeEvilBlowup(state, m)
+  return state
+}
+export function settleErrors(state) {
+  const diff = DIFFICULTY[state.difficulty]
+  const bad = state.vouchers.filter((v) => !v.correct && v.adjustDone !== true && !v.pardoned)
+  if (bad.length === 0) return { tasks: [], penalized: 0 }
+  const penalized = bad.length * (state.difficulty === 'hardcore' ? 0 : 0.5) // 罚款（硬核直接失败）
+  let tasks = []
+  if (diff.autoFix) {
+    bad.forEach((v) => {
+      v.pardoned = true
+      applyBusiness(state, v.expected, `自动修正：${v.desc}`, state.month)
+    })
+  } else if (state.difficulty === 'hardcore') {
+    state.failed = true
+    state.failedReason = '硬核模式：凭证记错一次即失败'
+    return { tasks: [], penalized: 0, fatal: true }
+  } else {
+    state.balances['银行存款'] = +(state.balances['银行存款'] - penalized).toFixed(2)
+    state.penalty += penalized
+    tasks = bad.map((v) => ({
+      vid: v.id,
+      desc: v.desc,
+      wrong: v.actual,
+      hint: `原业务应记为：${v.expected.map((e) => `${e.side === 'debit' ? '借' : '贷'} ${e.account} ${e.amount}`).join(' / ')}`,
+      done: false,
+    }))
+  }
+  return { tasks, penalized }
+}
+export function applyAdjust(state, vid, entries) {
+  const v = state.vouchers.find((x) => x.id === vid)
+  if (!v) return false
+  applyBusiness(state, entries, `调整分录：修正${v.desc}`, state.month)
+  v.adjustDone = true
+  return true
+24 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+}
+export function loseLife(state) {
+  state.lives -= 1
+  if (state.lives < 0) {
+    state.failed = true
+    state.failedReason = '容错次数用尽，经营失败'
+  }
+  return state.lives
+}
+export function totalAssets(b) {
+  return +(b['银行存款'] + b['库存现金'] + b['应收账款'] + b['原材料'] + b['库存商品'] +
+    b['生产成本'] + b['固定资产'] - b['累计折旧'] + b['无形资产'] - b['累计摊销'] + b['研发支出'] + b['预付账款']).toFixed(2)
+}
+export function sumAccount(b, parent) {
+  let s = 0
+  for (const k of Object.keys(b)) if (k === parent || k.startsWith(parent + '-')) s += (b[k] || 0)
+  return +s.toFixed(2)
+}
+export function isBankrupt(state) {
+  const assets = totalAssets(state.balances)
+  const debt = sumAccount(state.balances, '短期借款') + sumAccount(state.balances, '应付账款') +
+    sumAccount(state.balances, '应付职工薪酬') + sumAccount(state.balances, '应付利息') + sumAccount(state.balances, '应交税费')
+  return assets < debt || state.balances['银行存款'] < 0
+}
+export function buildReports(state) {
+  const b = state.balances || {}
+  const g = (k) => sumAccount(b, k)
+  const assets = [
+    { item: '货币资金', value: +(g('银行存款') + g('库存现金')).toFixed(2), side: 'asset' },
+    { item: '应收账款', value: +g('应收账款').toFixed(2), side: 'asset' },
+    { item: '存货(含原材料/库存/在产)', value: +(g('原材料') + g('库存商品') + g('生产成本')).toFixed(2), side: 'asset' },
+    { item: '预付账款', value: +g('预付账款').toFixed(2), side: 'asset' },
+    { item: '固定资产(净值)', value: +(g('固定资产') - g('累计折旧')).toFixed(2), side: 'asset' },
+    { item: '无形资产(净值)', value: +(g('无形资产') - g('累计摊销')).toFixed(2), side: 'asset' },
+    { item: '研发支出', value: +g('研发支出').toFixed(2), side: 'asset' },
+  ]
+  const liabilities = [
+    { item: '短期借款', value: +g('短期借款').toFixed(2), side: 'liability' },
+    { item: '应付账款', value: +g('应付账款').toFixed(2), side: 'liability' },
+    { item: '应付职工薪酬', value: +g('应付职工薪酬').toFixed(2), side: 'liability' },
+    { item: '应付利息', value: +g('应付利息').toFixed(2), side: 'liability' },
+    { item: '应交税费', value: +g('应交税费').toFixed(2), side: 'liability' },
+  ]
+  const equity = [
+    { item: '实收资本/股本', value: +(g('实收资本') + g('股本')).toFixed(2), side: 'equity' },
+    { item: '本年利润', value: +g('本年利润').toFixed(2), side: 'equity' },
+  ]
+  const balance = { type: 'balance', rows: [...assets, ...liabilities, ...equity] }
+  const cum = state.cum || {}
+  const revenue = +((cum.revenue != null ? cum.revenue : sumAccount(b, '主营业务收入'))).toFixed(2)
+25 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  const cost = +((cum.cost != null ? cum.cost : sumAccount(b, '主营业务成本'))).toFixed(2)
+  const mgmt = +((cum.mgmt != null ? cum.mgmt : sumAccount(b, '管理费用'))).toFixed(2)
+  const fin = +((cum.fin != null ? cum.fin : sumAccount(b, '财务费用'))).toFixed(2)
+  const rd = +((cum.rd != null ? cum.rd : sumAccount(b, '研发费用'))).toFixed(2)
+  const tax = +((cum.tax != null ? cum.tax : sumAccount(b, '所得税费用'))).toFixed(2)
+  const netProfit = +(state.balances['本年利润'] || 0).toFixed(2) // 累计净利润以「本年利润」为准（带符号）
+  const income = {
+    type: 'income',
+    rows: [
+      { item: '营业收入', value: revenue },
+      { item: '减：营业成本', value: -cost },
+      { item: '减：管理费用', value: -mgmt },
+      { item: '减：财务费用', value: -fin },
+      { item: '减：研发费用', value: -rd },
+      { item: '减：所得税费用', value: -tax },
+      { item: '净利润', value: netProfit, emphasize: true },
+    ],
+  }
+  const np = +g('本年利润').toFixed(2)
+  const dep = +g('累计折旧').toFixed(2)
+  const amort = +g('累计摊销').toFixed(2)
+  const monthPnL = +(g('主营业务收入') - g('主营业务成本') - g('管理费用') - g('财务费用') - g('研发费用') - g('所得税费用')).toFixed(2)
+  const inventory = +(g('库存商品') + g('原材料') + g('生产成本')).toFixed(2) // 存货占用（期初0）
+  const receivable = +g('应收账款').toFixed(2) // 应收占用（期初0）
+  const payable = +(g('应付账款') + g('应付职工薪酬') + g('应交税费') + g('应付利息')).toFixed(2) // 应付增加（期初0）
+  const opNet = +(np + monthPnL + dep + amort - inventory - receivable + payable).toFixed(2)
+  const invOut = -(+g('固定资产').toFixed(2) + +g('无形资产').toFixed(2) + +g('研发支出').toFixed(2)) // 购建长期资产（期初0）
+  const invNet = +invOut.toFixed(2)
+  const finIn = +(g('短期借款') + g('实收资本') + g('股本')).toFixed(2) // 借款+出资流入（期初0）
+  const finOut = -(+g('应付股利').toFixed(2) + (state.dividendPaid || 0)) // 分红流出
+  const finNet = +(finIn + finOut).toFixed(2)
+  const cashNet = +(opNet + invNet + finNet).toFixed(2)
+  const endCash = +(g('银行存款') + g('库存现金')).toFixed(2)
+  const cashflow = {
+    type: 'cashflow',
+    note: '间接法（基于累计余额，与资产负债表勾稽）',
+    rows: [
+      { item: '一、经营活动现金流量', level: 'h' },
+      { item: '净利润', value: np },
+      { item: '加：累计折旧', value: dep },
+      { item: '加：累计摊销', value: amort },
+      { item: '减：存货的增加', value: -inventory },
+      { item: '减：应收账款的增加', value: -receivable },
+      { item: '加：应付账款等经营性负债的增加', value: payable },
+      { item: '经营活动产生的现金流量净额', value: opNet, level: 'total' },
+      { item: '二、投资活动现金流量', level: 'h' },
+      { item: '购建固定资产、无形资产等支付的现金', value: invOut },
+      { item: '投资活动产生的现金流量净额', value: invNet, level: 'total' },
+      { item: '三、筹资活动现金流量', level: 'h' },
+      { item: '取得借款、吸收投资收到的现金', value: finIn },
+26 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+      { item: '偿还债务、分配利润支付的现金', value: finOut },
+      { item: '筹资活动产生的现金流量净额', value: finNet, level: 'total' },
+      { item: '四、现金及现金等价物净增加额', value: cashNet, level: 'total' },
+      { item: '期末现金及现金等价物余额', value: endCash, level: 'total' },
+    ],
+  }
+  return { balance, income, cashflow }
+}
+export function rollYearMood() {
+  const r = Math.random()
+  if (r < 0.33) return 'good'
+  if (r < 0.66) return 'bad'
+  return 'normal'
+}
+export const MOOD_LABEL = { good: '🌟 丰年', bad: '🌧️ 歉年', normal: '⛅ 平常年' }
+export function moodFactor(state) {
+  return state.yearMood === 'good' ? 1.25 : state.yearMood === 'bad' ? 0.7 : 1.0
+}
+export function investEff(state) {
+  return state.yearMood === 'good' ? 1.4 : state.yearMood === 'bad' ? 0.5 : 1.0
+}
+export function evilAct(state, kind) {
+  if (kind === 'salary') return evilSalary(state)
+  if (kind === 'taxAdjust') return evilTaxAdjust(state)
+  if (kind === 'taxOwe') return evilTaxOwe(state)
+  if (kind === 'fakeInvoice') {
+    state.evilCount = (state.evilCount || 0) + 1
+    return `😈 你选择虚开发票冲账。短期虚增成本少缴税，但虚开发票是刑事红线，随时可能爆雷。`
+  }
+  return `😈 你选择了一条邪道。`
+}
+export function evilSalary(state) {
+  const due = +(state.co.economics.salary * (state.scale || 1)).toFixed(1)
+  state.evilCount = (state.evilCount || 0) + 1
+  state.wageUnpaid = +((state.wageUnpaid || 0) + due).toFixed(2)
+  state.balances['应付职工薪酬'] = +((state.balances['应付职工薪酬'] || 0) + due).toFixed(2)
+  const bump = +(16 + Math.random() * 12 + (state.wageStrikes || 0) * 4).toFixed(1)
+  state.wageDiscontent = Math.min(100, +((state.wageDiscontent || 0) + bump).toFixed(1))
+  return `😈 你拖欠了本月工资（欠薪累计 ¥${state.wageUnpaid}万）。员工满意度下滑，不满度升至 ${Math.round(state.wageDiscontent)}，效率开始受损，罢工风险正在累积。`
+}
+export function evilTaxAdjust(state, ratio = 0.5) {
+  const due = +sumAccount(state.balances, '应交税费').toFixed(2)
+  if (due <= 0) return `当前没有应纳税额可调整。`
+  const cut = +(due * Math.min(0.9, Math.max(0, ratio))).toFixed(2)
+  state.evilCount = (state.evilCount || 0) + 1
+  state.taxAdjusts = (state.taxAdjusts || 0) + 1
+  state.taxAdjustAmount = +((state.taxAdjustAmount || 0) + cut).toFixed(2)
+  const entries = [
+    ...mk('应交税费', cut, '所得税费用', cut, '调账：调减本期应纳税额（违规）'),
+  ]
+27 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  applyBusiness(state, entries, '税务调账（违规）', state.month)
+  return `😈 你通过调账把应纳税额调减了 ¥${cut}万（累计已调减 ¥${state.taxAdjustAmount}万）。账面少缴了税，但调账次数越多，被税务局稽查的概率越高。`
+}
+export function evilTaxOwe(state) {
+  const due = +sumAccount(state.balances, '应交税费').toFixed(2)
+  if (due <= 0) return `当前没有应纳税额可拖欠。`
+  state.evilCount = (state.evilCount || 0) + 1
+  state.taxOwed = +((state.taxOwed || 0) + due).toFixed(2)
+  state.skippedTaxMonths = (state.skippedTaxMonths || 0) + 1
+  return `😈 你直接拖欠了本期税款 ¥${due}万（累计拖欠 ¥${state.taxOwed}万）。从拖欠之日起按日加收万分之五滞纳金，越拖越贵。`
+}
+export function resolveStrike(state, option) {
+  state.wageStrikes = (state.wageStrikes || 0) + 1 // 无论哪种都记一次黑历史
+  const owed = state.wageUnpaid || 0
+  const cash = state.balances['银行存款'] || 0
+  let pay, note
+  if (option === 'partial') {
+    pay = +(owed * 0.5).toFixed(2)
+    state.wageDiscontent = Math.max(0, +((state.wageDiscontent || 0) - 40).toFixed(1))
+    state.wageUnpaid = +(owed - pay).toFixed(2)
+    note = `部分补发：发放 ¥${pay}万（欠薪还剩 ¥${state.wageUnpaid}万），不满度下降但仍未平复。`
+  } else if (option === 'over') {
+    pay = +(owed * 1.5).toFixed(2)
+    state.wageDiscontent = 0
+    state.wageUnpaid = 0
+    note = `超额补发：发放 ¥${pay}万（含 50% 安抚金），员工感激，不满度清零、欠薪结清。`
+  } else { // full
+    pay = +owed.toFixed(2)
+    state.wageDiscontent = 0
+    state.wageUnpaid = 0
+    note = `全额补发：发放 ¥${pay}万，欠薪结清、不满度清零，但这次罢工已记入黑历史。`
+  }
+  pay = Math.min(pay, +(cash + owed).toFixed(2)) // 不会凭空变出钱
+  const entries = [
+    ...mk('应付职工薪酬', Math.min(owed, pay), '银行存款', Math.min(owed, pay), `罢工后补发工资(${option})`),
+  ]
+  if (option === 'over' && pay > owed) {
+    entries.push(...mk('管理费用-工资', +(pay - owed).toFixed(2), '银行存款', +(pay - owed).toFixed(2), '罢工安抚金(超额)'))
+  }
+  applyBusiness(state, entries, '罢工补发', state.month)
+  state.pendingStrike = null
+  state.strikeThisMonth = true
+  return `🪧 罢工结束。${note}`
+}
+export function wageEfficiency(state) {
+  const d = state.wageDiscontent || 0
+  let f = 1 - (d / 100) * 0.45            // 不满度最高拉低 45% 效率
+  if (state.strikeThisMonth) f *= 0.4    // 罢工当月再打四折
+  return +Math.max(0.25, f).toFixed(3)
+}
+28 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+export function accrueTaxLateFee(state) {
+  if ((state.taxOwed || 0) <= 0) return 0
+  const fee = +(state.taxOwed * 0.0005 * 30).toFixed(3)
+  state.taxLateFee = +((state.taxLateFee || 0) + fee).toFixed(3)
+  return fee
+}
+export function rollStrike(state) {
+  state.strikeThisMonth = false
+  if ((state.wageUnpaid || 0) <= 0) return false
+  const d = state.wageDiscontent || 0
+  const p = Math.min(0.85, 0.05 + (d / 100) * 0.45 + (state.wageStrikes || 0) * 0.08)
+  if (Math.random() <= p) {
+    state.strikeThisMonth = true
+    state.pendingStrike = { month: state.month }
+    return true
+  }
+  return false
+}
+export function taxAudit(state, month) {
+  state.pendingAudit = null
+  const adjustP = Math.min(0.6, 0.08 * (state.taxAdjusts || 0))      // 调账次数越多越易查
+  const oweP = Math.min(0.5, 0.06 * (state.skippedTaxMonths || 0))  // 拖欠越久越易查
+  const p = Math.max(adjustP, oweP)
+  if (p <= 0) return null
+  if (Math.random() > p) return null
+  const year = state.year
+  const events = []
+  let entries = []
+  state.auditHits = (state.auditHits || 0) + 1
+  if ((state.taxAdjustAmount || 0) > 0) {
+    const back = +state.taxAdjustAmount.toFixed(2)
+    const fine = +(back * 0.5).toFixed(2)
+    entries.push(...mk('所得税费用', back, '应交税费', back, `税务稽查：调账不实，补回税款¥${back}万`))
+    entries.push(...mk('所得税费用', fine, '银行存款', fine, `税务稽查罚款¥${fine}万`))
+    events.push(`调账被查：补回税款¥${back}万、罚款¥${fine}万`)
+    state.taxAdjustAmount = 0 // 已补回，累计虚减额清零
+  }
+  if ((state.taxOwed || 0) > 0) {
+    const back = +state.taxOwed.toFixed(2)
+    const late = +(state.taxLateFee || 0).toFixed(2)
+    entries.push(...mk('应交税费', back, '银行存款', back, `税务稽查：补缴拖欠税款¥${back}万`))
+    if (late > 0) entries.push(...mk('管理费用-滞纳金', late, '银行存款', late, `补缴滞纳金¥${late}万`))
+    events.push(`拖欠被查：补缴税款¥${back}万${late > 0 ? `、滞纳金¥${late}万` : ''}`)
+    state.taxOwed = 0; state.taxLateFee = 0; state.skippedTaxMonths = 0
+  }
+  if (entries.length) {
+    applyBusiness(state, entries, `税务稽查（第${year}年${month}月）`, month)
+  }
+  const msg = `🚨 第${year}年${month}月税务稽查！${events.join('；')}。`
+  state.pendingAudit = msg
+29 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  if (isBankrupt(state)) { state.failed = true; state.failedReason = msg }
+  return msg
+}
+export function maybeEvilBlowup(state, month) {
+  state.pendingBlowup = null
+  if ((state.evilCount || 0) === 0) return null
+  if (month % 12 !== 0) return null
+  const p = Math.min(0.85, 0.12 * (state.evilCount || 0)) // 单次爆雷概率随违规数上升
+  if (Math.random() > p) return null
+  const year = state.year
+  const taxDue = +sumAccount(state.balances, '应交税费').toFixed(2)
+  const wageDue = +state.balances['应付职工薪酬'].toFixed(2)
+  const events = []
+  let entries = []
+  if (taxDue > 0) {
+    const fine = +(taxDue * 0.5).toFixed(2)
+    entries.push(...mk('所得税费用', fine, '应交税费-滞纳金', fine, `税务稽查：追缴税款¥${taxDue}万 + 罚款¥${fine}万`))
+    entries.push(...mk('应交税费-滞纳金', fine, '银行存款', fine, '缴纳滞纳金罚款'))
+    events.push(`税务稽查：追缴税款¥${taxDue}万、罚款¥${fine}万`)
+  }
+  if (wageDue > 0) {
+    const fine = +(wageDue * 0.5).toFixed(2)
+    entries.push(...mk('管理费用', fine, '银行存款', fine, `劳动稽查：补发欠薪¥${wageDue}万 + 赔偿¥${fine}万`))
+    events.push(`劳动稽查：补发欠薪¥${wageDue}万、赔偿¥${fine}万`)
+  }
+  if (entries.length) {
+    applyBusiness(state, entries, `邪道爆雷（第${year}年）`, month)
+    state.skippedTaxMonths = 0
+  }
+  const msg = `💥 第${year}年爆雷！${events.join('；')}。邪道终有代价。`
+  state.pendingBlowup = msg
+  if (isBankrupt(state)) {
+    state.failed = true
+    state.failedReason = msg
+  }
+  return msg
+}
+export function liabilityTotal(state) {
+  return +sumAccount(state.balances, '短期借款') + sumAccount(state.balances, '应付账款') +
+    sumAccount(state.balances, '应付职工薪酬') + sumAccount(state.balances, '应付利息') +
+    sumAccount(state.balances, '应交税费')
+}
+export function operatingRevenue(state) {
+  return +sumAccount(state.balances, '主营业务收入')
+}
+export function genOrder(state, rng = Math.random) {
+  const co = state.co
+  const base = co.economics.dealSize * (state.scale || 1)
+  const sizeRoll = 0.6 + rng() * 0.9                 // 0.6~1.5 倍基准
+  const we = wageEfficiency(state)
+30 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+    }
+    if (a.type === 'evilTaxOwe') {
+      const msg = evilTaxOwe(s)
+      setToast(msg)
+      return { handled: true, selfContained: false }
+    }
+    if (a.type === 'resolveStrike') {
+      const msg = resolveStrike(s, a.option)
+      setToast(msg)
+      return { handled: true, selfContained: false }
+    }
+    if (a.type === 'evilFakeInvoice') {
+      const msg = evilAct(s, 'fakeInvoice')
+      setToast(msg)
+      return { handled: true, selfContained: false }
+    }
+    if (a.type === 'loopStart' || a.type === 'loopContinue') {
+      if (a.type === 'loopStart') {
+        s.year = 1
+        s.yearMood = rollYearMood() // 第 1 年行情开局即定
+        s.reachedMilestones = []
+        s.choiceLog = s.choiceLog || []
+        s.receivables = []
+        s.payablesDue = []
+      }
+      if (chapter.id === 'continuing') {
+        const orders = Array.from({ length: 3 }, () => genOrder(s))
+        s.monthOrders = orders
+        setMonthOrders(orders)
+      } else {
+        setMonthOrders([])
+      }
+      const back = 1 // 回到"进货"步（step1），重复 进→销→薪→结
+      setSim(s); setStepIdx(back); persist(s, coId, diffId, chapterIdx, back, false)
+      const orderCount = (s.monthOrders || []).length
+      setToast(a.type === 'loopStart' ? `🚀 开始持续经营！本年行情：${MOOD_LABEL[s.yearMood]}（第1年）` : `⏭️ 进入第 ${s.month} 月经营（${MOOD_LABEL[s.yearMood] || '⛅'} 第${s.year || 1}年），本月 ${orderCount} 张订单待接`)
+      return { handled: true, selfContained: true }
+    }
+    if (a.type === 'close') {
+      setSim(s)
+      finish(s)
+      return { handled: true, selfContained: true }
+    }
+    return { handled: false }
+  }
+  const choose = (opt) => {
+    try {
+      if (!opt || !opt.action) { nextStep(); return }
+      const a = opt.action
+      const before = clone(sim)
+44 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+      const s = clone(sim)
+      const sp = runSpecial(s, a)
+      if (sp.handled) {
+        if (!sp.selfContained) {
+          afterSpecial(s)
+        } else {
+          setAnalysis(analyzeDecision(before, s, a, { title: '操作被拦截' }))
+        }
+        return
+      }
+      const { entries, expected, desc } = doBusiness(s, a)
+      if (diff.selfEntry) return // 困难模式不应走这里
+      recordVoucher(s, { desc, actual: expected, expected, month: s.month })
+      setSim(s); setLastEntries(entries); setToast(desc + ' ✓')
+      setAnalysis(analyzeDecision(before, s, a))
+      afterAction(s)
+    } catch (e) {
+      console.error('[choose 出错]', e)
+      setRuntimeError(`选择出错：${e && e.message}\n${e && e.stack}`)
+    }
+  }
+  const submitEntry = () => {
+    try {
+      const a = step.options[0]?.action
+      if (!a) { nextStep(); return }
+      const before = clone(sim)
+      const s = clone(sim)
+      const sp = runSpecial(s, a)
+      if (sp.handled) {
+        if (!sp.selfContained) {
+          afterSpecial(s)
+        } else {
+          setAnalysis(analyzeDecision(before, s, a, { title: '操作被拦截' }))
+        }
+        return
+      }
+      const { entries, expected, desc } = doBusiness(s, a, brief?.amount)
+      const actual = [
+        { side: 'debit', account: entryForm.dAcc, amount: +entryForm.dAmt },
+        { side: 'credit', account: entryForm.cAcc, amount: +entryForm.cAmt },
+      ]
+      const v = recordVoucher(s, { desc, actual, expected, month: s.month })
+      setSim(s)
+      if (v.correct) {
+        setToast('✓ 分录正确！')
+        setLastEntries(entries)
+      } else {
+        loseLife(s)
+        setToast(diff.autoFix ? '记错啦，已自动修正' : `✗ 分录有误，扣 1 次容错（剩 ${s.lives}）`)
+        setLastEntries(entries) // 展示正确分录
+45 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+      }
+      setAnalysis(analyzeDecision(before, s, a, { title: '自写分录：' + desc }))
+      setEntryForm({ dAcc: '', dAmt: '', cAcc: '', cAmt: '' })
+      afterAction(s)
+    } catch (e) {
+      console.error('[submitEntry 出错]', e)
+      setRuntimeError(`提交分录出错：${e && e.message}\n${e && e.stack}`)
+    }
+  }
+  const afterSpecial = (s) => {
+    if (isBankrupt(s)) { fail(s, '资不抵债，公司破产！'); return }
+    if (s.failed) { fail(s, s.failedReason); return }
+    setSim(s); persist(s, coId, diffId, chapterIdx, stepIdx, false)
+    nextStep()
+  }
+  const afterAction = (s) => {
+    if (isBankrupt(s)) { fail(s, '资不抵债，公司破产！'); return }
+    if (s.failed) { fail(s, s.failedReason); return }
+    nextStep()
+  }
+  const doMonthEnd = (passed) => {
+    const before = clone(sim) // 结账前快照（用于月度体检对比）
+    const s = passed || clone(sim)
+    monthEnd(s)
+    const extras = endOfMonthExtras(s, { rollEvent: true })
+    if (extras.ev) setToast(`🎲 ${extras.ev.emoji} ${extras.ev.title}：${extras.ev.desc}`)
+    if (extras.miles && extras.miles.length) {
+      setTimeout(() => setToast(`🏁 里程碑达成：${extras.miles.map((m) => m.emoji + m.title).join('、')}`), 1200)
+    }
+    const settle = settleErrors(s)
+    if (settle.fatal) { fail(s, s.failedReason); return }
+    setSim(s)
+    if (s.pendingStrike) {
+      setPendingStrike({ month: s.month })
+    }
+    let msg = `第${s.month}月结账：折旧+计息${settle.penalized ? `，罚款¥${settle.penalized}万` : ''}`
+    if (extras.events && extras.events.length) {
+      msg += '；' + extras.events.map((e) => `${e.title}¥${fmtW(e.amount)}万`).join('，')
+    }
+    if (settle.tasks && settle.tasks.length) {
+      setAdjustTasks(settle.tasks)
+      msg += '；⚠️ 本月有凭证记错，需做调整分录修正！'
+    }
+    if (s.pendingBlowup) msg += `；${s.pendingBlowup}`
+    setToast(msg)
+    if (s.pendingBlowup) s.pendingBlowup = null
+    setAnalysis(analyzeDecision(before, s, { type: 'monthEnd' }, { title: `第 ${s.month} 月结账体检` }))
+    if (s.failed) { fail(s, s.failedReason); return }
+    if (isBankrupt(s)) { fail(s, '资不抵债，公司破产！'); return }
+    nextStep()
+46 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  }
+  const submitAdjust = (task) => {
+    const s = clone(sim)
+    const entries = [
+      { side: 'debit', account: entryForm.dAcc, amount: +entryForm.dAmt },
+      { side: 'credit', account: entryForm.cAcc, amount: +entryForm.cAmt },
+    ]
+    applyAdjust(s, task.vid, entries)
+    setAdjustTasks((t) => t.filter((x) => x.vid !== task.vid))
+    setEntryForm({ dAcc: '', dAmt: '', cAcc: '', cAmt: '' })
+    setToast('✓ 调整分录已应用')
+    setSim(s)
+  }
+  const acceptOrder = (order) => {
+    try {
+      const s = clone(sim)
+      fulfillOrder(s, order)
+      s.monthOrders = (s.monthOrders || []).filter((o) => o.id !== order.id)
+      setMonthOrders(s.monthOrders)
+      setSim(s)
+      persist(s, coId, diffId, chapterIdx, stepIdx, false)
+      setToast(`✓ 已接「${order.customer}」订单：销售额¥${fmtW(order.amount)}万，预计毛利¥${fmtW(order.profit)}万${order.credit > 0 ? `（赊销${order.credit}月后回款）` : '（现结）'}`)
+    } catch (e) {
+      console.error('[acceptOrder 出错]', e)
+      setRuntimeError(`接单出错：${e && e.message}\n${e && e.stack}`)
+    }
+  }
+  const nextStep = () => {
+    if (stepIdx + 1 < chapter.steps.length) {
+      const n = stepIdx + 1
+      setStepIdx(n)
+      persist(sim, coId, diffId, chapterIdx, n, false)
+    } else if (chapterIdx + 1 < STORY.length) {
+      const ci = chapterIdx + 1
+      setChapterIdx(ci); setStepIdx(0)
+      persist(sim, coId, diffId, ci, 0, false)
+    } else {
+      finish(sim)
+    }
+  }
+  const finish = (s) => {
+    const r = buildReports(s)
+    setReports(r)
+    const profit = s.balances['本年利润'] || 0
+    const cash = s.balances['银行存款']
+    const ok = cash >= 0 && !s.failed
+    const scores = scoreMetrics(s)
+    const stars = overallStars(scores)
+    const res = {
+      ok, stars,
+47 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+      reason: ok ? `通关！净利润¥${fmtW(profit)}万 现金¥${fmtW(cash)}万` : '未达成通关条件',
+      profit, cash, scores,
+      insights: decisionInsights(s),                 // B: 决策后果回放
+      milestones: (s.reachedMilestones || []).map((id) => MILESTONES.find((m) => m.id === id)).filter(Boolean), // D
+      ordersFulfilled: s.choices?.ordersFulfilled || 0,
+    }
+    setResult(res)
+    setEnded(true)
+    dispatch({ type: 'ADD_COINS', amount: ok ? 50 : 20 })
+    dispatch({ type: 'ADD_EXP', amount: 60 })
+    dispatch({ type: 'COMPANY_RUN', id: coId })
+    dispatch({ type: 'EARN_BADGE', id: ok ? 'boss' : 'cfo' })
+    dispatch({
+      type: 'RECORD_RUN',
+      coId, coName: sim.co?.name || coId,
+      profit: +(sim.balances['本年利润'] || 0).toFixed(2),
+      stars: res.stars, months: sim.month, date: new Date().toISOString().slice(0, 10),
+    })
+    res.milestones.forEach((m) => dispatch({ type: 'EARN_BADGE', id: 'ms_' + m.id }))
+    clearSave(); setSaved(null)
+  }
+  const fail = (s, reason) => {
+    setSim(s)
+    const res = { ok: false, stars: 0, reason, profit: s.balances['本年利润'] || 0, cash: s.balances['银行存款'] }
+    setResult(res)
+    setEnded(true)
+    dispatch({ type: 'ADD_COINS', amount: 10 })
+    persist(s, coId, diffId, chapterIdx, stepIdx, true)
+    setResult((r) => ({ ...r, failed: true }))
+  }
+  const restart = () => {
+    clearSave(); setSaved(null)
+    setPhase('select'); setSim(null); setReports(null); setEnded(false); setResult(null); setAdjustTasks([]); setStepIdx(0); setChapterIdx(0)
+  }
+  const clone = (s) => JSON.parse(JSON.stringify(s))
+  function mk(d, da, c, ca, desc) {
+    return [
+      { side: 'debit', account: d, amount: da, desc },
+      { side: 'credit', account: c, amount: ca, desc },
+    ]
+  }
+  if (phase === 'askLoad' && saved) {
+    const savedCo = COMPANIES.find((c) => c.id === saved.coId)
+    const savedDiff = DIFFICULTY[saved.diffId]
+    return (
+      <div className="page fade-in">
+        <div className="card" style={{ textAlign: 'center', marginTop: 40 }}>
+          <div style={{ fontSize: 46 }}>📂</div>
+          <div style={{ fontWeight: 800, fontSize: 18, marginTop: 8 }}>检测到之前的经营存档</div>
+          <div style={{ color: 'var(--text-soft)', marginTop: 6 }}>
+48 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+            {savedCo?.emoji} {savedCo?.name} · {savedDiff?.name}
+          </div>
+          <div style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 2 }}>
+            进度：第 {saved.chapterIdx + 1} 章第 {saved.stepIdx + 1} 步
+          </div>
+          <button className="btn mt12" onClick={() => resume(saved)}>▶️ 继续上次的经营</button>
+          <button className="btn ghost mt12" onClick={() => { clearSave(); setSaved(null); setPhase('select') }}>🔄 重新开一家（清空存档）</button>
+        </div>
+      </div>
+    )
+  }
+  if (phase === 'select') {
+    if (pendingCompany) {
+      const c = pendingCompany
+      const projects = c.projects || []
+      return (
+        <div className="page fade-in">
+          <Toast message={toast} onClose={() => setToast('')} />
+          <button className="btn ghost" style={{ marginBottom: 10 }} onClick={() => setPendingCompany(null)}>← 换家公司</button>
+          <div className="section-title">🏢 {c.emoji} {c.name} · 选经营项目</div>
+          <div style={{ color: 'var(--text-soft)', fontSize: 12, marginBottom: 8 }}>
+            同一类公司也分不同产品线，参数与难点略有差异，挑一个你熟悉的吧～
+          </div>
+          {projects.length === 0 ? (
+            <div className="card">该产品线暂未细分经营项目，直接选择难度开始。</div>
+          ) : projects.map((p) => (
+            <div key={p.id} className="card">
+              <div style={{ fontWeight: 800 }}>{p.emoji} {p.name}</div>
+              <div style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 4 }}>{p.blurb}</div>
+              {p.econ && (
+                <div className="flex" style={{ marginTop: 6 }}>
+                  {p.econ.margin != null && <span className="chip">毛利 {Math.round(p.econ.margin * 100)}%</span>}
+                  {p.econ.dealSize != null && <span className="chip">单笔 ¥{p.econ.dealSize}万</span>}
+                </div>
+              )}
+              <div className="section-title" style={{ margin: '12px 0 8px', fontSize: 14 }}>选择难度</div>
+              {Object.values(DIFFICULTY).map((d) => (
+                <button key={d.id} className="btn ghost mt12" style={{ width: '100%', padding: '10px' }} onClick={() => start(c.id, d.id, p.id)}>
+                  {d.name} · 容错{d.lives}次 {d.selfEntry ? '· 自写分录' : '· 选项引导'}
+                </button>
+              ))}
+            </div>
+          ))}
+          {projects.length > 0 && (
+            <button className="btn mt12" style={{ width: '100%' }} onClick={() => start(c.id, diffId, projects[0].id)}>
+              直接开干（默认 {projects[0].emoji}{projects[0].name} · {DIFFICULTY[diffId].name}）
+            </button>
+          )}
+        </div>
+      )
+49 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+    }
+    return (
+      <div className="page fade-in">
+        <Toast message={toast} onClose={() => setToast('')} />
+        <div className="section-title">🏢 选择公司类型</div>
+        {COMPANIES.map((c) => (
+          <div key={c.id} className="card" style={{ cursor: 'pointer' }} onClick={() => chooseCompany(c.id)}>
+            <div style={{ fontWeight: 800 }}>{c.emoji} {c.name}</div>
+            <div style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 4 }}>{c.blurb}</div>
+            <div className="flex" style={{ marginTop: 6 }}>
+              <span className="chip">难度 {'★'.repeat(c.difficulty)}</span>
+              <span className="chip">启动 ¥{c.initCash}万</span>
+              {c.projects?.length > 0 && <span className="chip">{c.projects.length} 个经营项目</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (ended) {
+    const sc = result?.scores
+    return (
+      <div className="page fade-in">
+        <div className="card" style={{ textAlign: 'center', marginTop: 40 }}>
+          <div style={{ fontSize: 50 }}>{result.ok ? '🏆' : '💥'}</div>
+          <div style={{ fontWeight: 800, fontSize: 20, marginTop: 8 }}>{result.ok ? '经营成功！' : '经营失败'}</div>
+          <div style={{ color: 'var(--text-soft)', marginTop: 6 }}>{result.reason}</div>
+          {result.ok && (
+            <div style={{ fontSize: 32, margin: '12px 0' }}>
+              {'⭐'.repeat(result.stars)}{'☆'.repeat(3 - result.stars)}
+            </div>
+          )}
+          {/* A: 四维经营能力雷达图 */}
+          {sc && <RadarChart scores={sc} />}
+          {result && (
+            <div className="card" style={{ background: '#FFFDF8', textAlign: 'left', marginTop: 10 }}>
+              <div>净利润：¥{fmtW(result.profit)}万</div>
+              <div>现金余额：¥{fmtW(result.cash)}万</div>
+              <div>累计接单：{result.ordersFulfilled || 0} 笔</div>
+              <div>容错剩余：{sim?.lives ?? 0}</div>
+            </div>
+          )}
+          {/* B: 决策后果回放 + G: 平行对照引导 */}
+          {result?.insights?.length > 0 && (
+            <div className="card" style={{ background: '#F4FBF9', textAlign: 'left', marginTop: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>🔎 你的决策带来了什么</div>
+              {result.insights.map((t, i) => <div key={i} style={{ fontSize: 12, lineHeight: 1.7 }}>{t}</div>)}
+              <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 6, lineHeight: 1.6 }}>
+                🔁 平行对照：换一家公司类型、或改用另一种纳税人身份/出资方式再开一局，对比"如果当初走另一条路"能多赚多少——本局成绩已记入「我的-排行榜/多公司对比」。
+              </div>
+50 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+            </div>
+          )}
+          {/* D: 里程碑成就 */}
+          {result?.milestones?.length > 0 && (
+            <div className="card" style={{ background: '#FFFAF0', textAlign: 'left', marginTop: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>🏁 达成的经营里程碑</div>
+              {result.milestones.map((m, i) => (
+                <div key={i} style={{ fontSize: 13, padding: '3px 0' }}>{m.emoji} {m.title} — {m.desc}</div>
+              ))}
+            </div>
+          )}
+          <button className="btn mt12" onClick={restart}>🔄 再开一家</button>
+          <button className="btn ghost mt12" onClick={() => navigate('/reports')}>📊 查看报表</button>
+        </div>
+      </div>
+    )
+  }
+  if (adjustTasks.length > 0) {
+    const task = adjustTasks[0]
+    return (
+      <div className="page fade-in">
+        <Toast message={toast} onClose={() => setToast('')} />
+        <div className="card" style={{ borderLeft: '5px solid var(--gold)' }}>
+          <div style={{ fontWeight: 800, color: 'var(--gold)' }}>🔧 调整分录任务</div>
+          <div style={{ marginTop: 6 }}>业务：{task.desc}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 6 }}>你记成了：{task.wrong.map((e) => `${e.side === 'debit' ? '借' : '贷'}${e.account}${e.amount}`).join(' / ')}</div>
+          <div style={{ fontSize: 12, color: 'var(--accent-deep)', background: '#E9F8F6', padding: 8, borderRadius: 8, marginTop: 6 }}>正确应为：{task.hint}</div>
+          <EntryForm form={entryForm} setForm={setEntryForm} />
+          <button className="btn mt12" onClick={() => submitAdjust(task)}>提交调整分录</button>
+        </div>
+      </div>
+    )
+  }
+  const selfMode = diff.selfEntry && step?.options?.[0]?.action
+  const entryActionTypes = ['rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary']
+  const curAction = step?.options?.[0]?.action
+  const isEntryAction = curAction && entryActionTypes.includes(curAction.type)
+  if (pendingStrike) {
+    const owed = sim.wageUnpaid || 0
+    const d = Math.round(sim.wageDiscontent || 0)
+    const resolve = (option) => {
+      runSpecial({ type: 'resolveStrike', option })
+      setPendingStrike(null)
+    }
+    return (
+      <div className="page fade-in">
+        <Toast message={toast} onClose={() => setToast('')} />
+        <div className="card" style={{ borderLeft: '5px solid #e74c3c', background: '#FFF5F5', marginTop: 30 }}>
+          <div style={{ fontSize: 30 }}>🪧</div>
+          <div style={{ fontWeight: 800, color: '#e74c3c', marginTop: 4 }}>员工罢工了！</div>
+51 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+          <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7 }}>
+            因长期拖欠工资，员工发起罢工。当前累计欠薪 <b>¥{fmtW(owed)}万</b>，不满度 <b>{d}/100</b>。
+            罢工当月效率骤降。你决定如何回应？（无论哪种都会记入罢工黑历史，使下次更易罢工、损失更大）
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+            <button className="btn" onClick={() => resolve('full')}>💰 全额补发（结清欠薪，不满度清零）</button>
+            <button className="btn ghost" onClick={() => resolve('partial')}>⚠️ 部分补发 50%（欠薪减半，不满度下降但仍未平复）</button>
+            <button className="btn ghost" onClick={() => resolve('over')}>🔥 超额补发 150%（多花 50% 安抚金，彻底挽回人心）</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="page fade-in">
+      {runtimeError && (
+        <div className="card" style={{ borderLeft: '5px solid #e74c3c', background: '#FFF5F5', marginBottom: 12 }}>
+          <div style={{ fontWeight: 800, color: '#e74c3c', fontSize: 15 }}>⚠️ 交互出错</div>
+          <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, background: '#fbeaea', padding: 10, borderRadius: 8, marginTop: 8, maxHeight: 260, overflow: 'auto' }}>{runtimeError}</pre>
+          <button className="btn mt12" onClick={() => setRuntimeError(null)}>关闭提示</button>
+        </div>
+      )}
+      <Toast message={toast} onClose={() => setToast('')} />
+      <div className="card">
+        <div className="flex between center">
+          <div style={{ fontWeight: 800 }}>{co.emoji} {co.name}{sim.projectEmoji ? ` · ${sim.projectEmoji}${sim.projectName}` : ''}</div>
+          <span className="chip">{diff.name}</span>
+        </div>
+        <div className="flex gap8 mt12">
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>💵 现金</span><span className="v">¥{fmtW(sim.balances['银行存款'])}万</span></div>
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>📈 利润</span><span className="v">¥{fmtW(sim.balances['本年利润'])}万</span></div>
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>❤️ 容错</span><span className="v">{sim.lives}</span></div>
+        </div>
+        <div className="flex gap8 mt8">
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🧾 营收</span><span className="v">¥{fmtW(operatingRevenue(sim))}万</span></div>
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🏦 负债</span><span className="v">¥{fmtW(liabilityTotal(sim))}万</span></div>
+          <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>📏 规模</span><span className="v">×{fmtW(sim.scale || 1)}</span></div>
+        </div>
+        {(chapter.loop) && (
+          <>
+            <div className="flex gap8 mt8">
+              <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🌤️ 行情</span><span className="v">{MOOD_LABEL[sim.yearMood] || '⛅ 平常年'}（第{sim.year || 1}年）</span></div>
+              <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>😈 邪道</span><span className="v">{sim.evilCount || 0} 次</span></div>
+            </div>
+            {/* C: 当前随机事件提示条 */}
+            {sim.lastEvent && (
+              <div className="flex gap8 mt8" style={{ alignItems: 'center' }}>
+                <div className="shop-stat" style={{ flex: 1, marginBottom: 0, background: sim.lastEvent.tone === 'good' ? '#E3F6EF' : sim.lastEvent.tone === 'bad' ? '#FDECEC' : '#FFF7E6' }}>
+                  <span>{sim.lastEvent.emoji} {sim.lastEvent.title}</span>
+                  <span className="v" style={{ fontSize: 11, fontWeight: 500 }}>{sim.lastEvent.desc}</span>
+52 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+                </div>
+              </div>
+            )}
+            {/* D: 里程碑进度 */}
+            {MILESTONES.length > 0 && (
+              <div className="flex gap8 mt8" style={{ flexWrap: 'wrap' }}>
+                {MILESTONES.map((m) => {
+                  const done = (sim.reachedMilestones || []).includes(m.id)
+                  const near = sim.month >= m.month - 1 && !done
+                  return (
+                    <span key={m.id} title={m.desc}
+                      style={{ fontSize: 11, padding: '3px 8px', borderRadius: 8, opacity: done ? 1 : 0.4,
+                        background: done ? 'var(--gold)' : near ? '#E9F8F6' : '#f2efe8', color: done ? '#fff' : 'var(--text-soft)' }}>
+                      {done ? '✓ ' : near ? '🔔 ' : '🔒 '}{m.title}
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+        {(chapter.loop) && (sim.totalDividend > 0 || (sim.usedTaxPlans || []).length) && (
+          <div className="flex gap8 mt8">
+            <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>💰 累计分红</span><span className="v">¥{fmtW(sim.totalDividend || 0)}万</span></div>
+            <div className="shop-stat" style={{ flex: 1, marginBottom: 0 }}><span>🛡️ 合法筹划</span><span className="v">{(sim.usedTaxPlans || []).length ? sim.usedTaxPlans.map((p) => TAX_PLANS[p]?.name || p).join('/') : '未使用'}</span></div>
+          </div>
+        )}
+      </div>
+      <div className="card" style={{ background: '#FFFDF8', borderLeft: '5px solid var(--primary)' }}>
+        <div style={{ fontWeight: 700, color: 'var(--primary-deep)', fontSize: 13 }}>
+          {chapter.title} · 第{sim.month}月{chapter.loop ? `（第 ${Math.ceil(sim.month / 12)} 年）` : ''}
+        </div>
+        <div style={{ marginTop: 6, lineHeight: 1.7 }}>{step?.npc}</div>
+        {step?.teach && (
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--accent-deep)', background: '#E9F8F6', padding: '8px 10px', borderRadius: 8 }}>💡 {step.teach}</div>
+        )}
+        <button className="btn ghost mt12" style={{ width: 'auto', padding: '6px 12px', fontSize: 12 }} onClick={() => setShowHint((v) => !v)}>
+          {showHint ? '收起提示' : '💡 卡住了？看思路'}
+        </button>
+        {showHint && (step?.teach || (step?.options || []).some((o) => o.teach)) && (
+          <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 6, lineHeight: 1.7 }}>
+            {step?.teach && <div>思路：{step.teach}（想想这笔业务影响了哪些科目、是增加还是减少、记借还是贷）</div>}
+            {(step?.options || []).filter((o) => o.teach).map((o, i) => (
+              <div key={i} style={{ marginTop: step?.teach ? 6 : 0 }}>
+                {step?.teach ? `▸ ${o.label}：` : '思路：'}{o.teach}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+53 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+      {/* E: 持续经营"销售"步——主动接单面板（替换被动卖货） */}
+      {!selfMode && chapter.id === 'continuing' && step?.options?.[0]?.action?.type === 'sale' && (
+        <div className="card">
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>📥 本月订单（点击接单，把生意主动权握在手里）</div>
+          <div style={{ fontSize: 12, color: 'var(--text-soft)', marginBottom: 10 }}>
+            下方订单可全接也可挑着接。赊销订单会挂「应收账款」，数月后自动回款；不接单也可直接点"卖货收款"按默认成交一笔。
+          </div>
+          {monthOrders.length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--text-soft)', padding: '8px 0' }}>本月订单都已接完，或本月无新订单。</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {monthOrders.map((o) => (
+                <div key={o.id} style={{ border: '1.5px solid var(--line)', borderRadius: 12, padding: '10px 12px', background: o.credit > 0 ? '#FFF8F0' : '#F4FBF9' }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{o.emoji || '🧾'} {o.customer}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-soft)', margin: '4px 0' }}>
+                    销售额 ¥{fmtW(o.amount)}万 · 毛利率 {Math.round(o.margin * 100)}% · 预计毛利 ¥{fmtW(o.profit)}万
+                  </div>
+                  <div style={{ fontSize: 11, marginBottom: 6 }}>
+                    {o.credit > 0
+                      ? <span style={{ color: 'var(--accent-deep)', background: '#E9F8F6', padding: '2px 8px', borderRadius: 6 }}>赊销 {o.credit} 月后回款</span>
+                      : <span style={{ color: '#1a8f6a', background: '#E3F6EF', padding: '2px 8px', borderRadius: 6 }}>现结</span>}
+                  </div>
+                  <button className="btn-sm" onClick={() => acceptOrder(o)} style={{ width: '100%' }}>接单并记账</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {/* 简单模式：选项卡片 */}
+      {!selfMode && (
+        <div className="card">
+          {step?.options?.length ? (
+            step.options.map((opt, i) => (
+              <div key={i}>
+                <div className="option" style={{ cursor: 'pointer' }} onClick={() => choose(opt)}>
+                  <span className="opt-key">{i + 1}</span><span>{opt.label}</span>
+                  {opt.recommended && !diff.selfEntry && <span className="chip" style={{ marginLeft: 'auto', background: 'var(--gold)', color: '#fff' }}>💡推荐</span>}
+                </div>
+                {diff.selfEntry === false && opt.demoEntries && (
+                  <div style={{ fontSize: 11, color: 'var(--accent-deep)', background: '#E9F8F6', padding: '6px 10px', borderRadius: 8, margin: '0 0 8px 28px', lineHeight: 1.6 }}>
+                    📖 演示分录：{opt.demoEntries.map((e, k) => `${e.side === 'debit' ? '借' : '贷'} ${e.account} ¥${e.amount}万`).join('，')}
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            (step?.action || step?.options?.[0]?.action) ? (
+              <div className="card" style={{ padding: 12 }}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>请填写这笔业务的分录：</div>
+54 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+                <EntryForm form={entryForm} setForm={setEntryForm} />
+                <button className="btn mt12" onClick={submitEntry}>提交分录</button>
+              </div>
+            ) : <button className="btn" onClick={() => nextStep()}>继续 ➜</button>
+          )}
+        </div>
+      )}
+      {/* 困难/硬核：自写分录 / 特殊决策确认 */}
+      {selfMode && (
+        <div className="card">
+          {isEntryAction ? (
+            <>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>✍️ 自己写出这笔业务的分录</div>
+              {brief && (
+                <div style={{ fontSize: 12, background: '#E9F8F6', color: 'var(--accent-deep)', padding: '8px 10px', borderRadius: 8, marginBottom: 10, lineHeight: 1.7 }}>
+                  📋 业务简报：{brief.type === 'sale' && `卖出货物 ¥${brief.amount}万，税率 ${(brief.rate * 100)}% → 销项税 ¥${brief.vat}万；结转成本 ¥${brief.cost}万`}
+                  {brief.type === 'purchase' && `现金进货 ¥${brief.amount}万${brief.vat ? `，进项税 ¥${brief.vat}万（可抵扣）` : ''}`}
+                  {brief.type === 'purchaseCredit' && `赊购进货 ¥${brief.amount}万${brief.vat ? `，进项税 ¥${brief.vat}万（可抵扣）` : ''}`}
+                  {brief.type === 'salary' && `计提工资 ¥${brief.amount}万`}
+                  {brief.type === 'rent' && `房租 ¥${brief.amount}万（含押金）`}
+                </div>
+              )}
+              <EntryForm form={entryForm} setForm={setEntryForm} />
+              <button className="btn mt12" onClick={submitEntry}>提交分录</button>
+            </>
+          ) : (
+            step.options.length ? (
+              <>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>⚙️ 这个决策由你拍板</div>
+                <div style={{ fontSize: 12, color: 'var(--text-soft)', marginBottom: 10 }}>{typeof step.npc === 'function' ? step.npc(sim) : step.npc}</div>
+                {step.options.map((opt, i) => (
+                  <div key={i} className="option" style={{ cursor: 'pointer' }} onClick={() => choose(opt)}>
+                    <span className="opt-key">{i + 1}</span><span>{opt.label}</span>
+                  </div>
+                ))}
+              </>
+            ) : <button className="btn" onClick={() => nextStep()}>继续 ➜</button>
+          )}
+        </div>
+      )}
+      {lastEntries && <EntryAnimation entries={lastEntries} />}
+      {analysis && (
+        <div className="card" style={{ background: analysis.alert ? '#FFF6F4' : '#F7FBF8', border: `1px solid ${analysis.alert ? '#F3C0B5' : '#BFE3D0'}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ fontWeight: 800 }}>🔍 财务诊断 · {analysis.title}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-soft)' }}>本步决策影响</div>
+          </div>
+          {analysis.impacts.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {analysis.impacts.map((it, i) => (
+55 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+                <span key={i} style={{
+                  fontSize: 12, fontWeight: 700, padding: '3px 8px', borderRadius: 8,
+                  background: it.good ? '#E6F6EC' : '#FDEAE6',
+                  color: it.good ? '#1F8A4C' : '#C0392B',
+                }}>
+                  {it.label} {it.dir === 'up' ? '▲' : '▼'} {fmtW(it.value)}
+                </span>
+              ))}
+            </div>
+          )}
+          {analysis.focus && (
+            <div style={{ fontSize: 12.5, lineHeight: 1.6, color: 'var(--text)', marginBottom: 6 }}>
+              {analysis.focus}
+            </div>
+          )}
+          <div style={{
+            fontSize: 12.5, fontWeight: 700, lineHeight: 1.6, marginBottom: 8,
+            color: analysis.alert ? '#C0392B' : '#1F8A4C',
+          }}>
+            {analysis.diagnosis}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 6 }}>
+            {[
+              { k: '现金(万)', v: fmtW(analysis.snapshot.cash), warn: analysis.snapshot.cash < 2 },
+              { k: '累计净利(万)', v: fmtW(analysis.snapshot.netProfit), warn: analysis.snapshot.netProfit < 0 },
+              { k: '负债率', v: analysis.snapshot.debtRatio + '%', warn: analysis.snapshot.debtRatio > 70 },
+              { k: '合规度', v: analysis.snapshot.compliance + '/100', warn: analysis.snapshot.compliance < 40 },
+            ].map((m, i) => (
+              <div key={i} style={{
+                background: '#fff', borderRadius: 8, padding: '6px 8px', textAlign: 'center',
+                border: `1px solid ${m.warn ? '#F3C0B5' : '#ECECEC'}`,
+              }}>
+                <div style={{ fontSize: 10.5, color: 'var(--text-soft)' }}>{m.k}</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: m.warn ? '#C0392B' : 'var(--text)' }}>{m.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {reports && (
+        <div ref={reportRef} className="card" style={{ background: '#FFFDF8' }}>
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>📊 当前报表（实时）</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent-deep)', marginBottom: 8 }}>
+            ✅ 报表已生成，可对照检查借贷逻辑（资产=负债+权益 / 收入-费用=利润）
+          </div>
+          <ReportLite report={reports.balance} />
+          <ReportLite report={reports.income} />
+          <ReportLite report={reports.cashflow} />
+        </div>
+      )}
+56 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+      <div className="section-title mt20">📒 账本（最新 6 笔）</div>
+      {[...sim.ledger].slice(-6).reverse().map((e, i) => (
+        <div key={i} className="card" style={{ padding: 10, fontSize: 12 }}>
+          <div style={{ fontWeight: 600 }}>第{e.month}月 · {e.desc}</div>
+          {e.debit && <div style={{ color: 'var(--primary-deep)' }}>借 {e.debit} ¥{e.amt}万</div>}
+          {e.credit && <div style={{ color: 'var(--accent-deep)' }}>贷 {e.credit} ¥{e.amt}万</div>}
+        </div>
+      ))}
+      <button className="btn ghost mt12" onClick={restart}>🔄 重开一家</button>
+      <button className="btn ghost mt12" onClick={() => {
+        try {
+          const r = buildReports(sim)
+          setReports(r)
+          setReportReady(true)
+          setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+        } catch (err) {
+          setRuntimeError(err)
+        }
+      }}>📊 {reportReady ? '重新生成报表' : '生成报表'}</button>
+    </div>
+  )
+}
+export default function GameWithBoundary(props) {
+  return (
+    <ErrorBoundary>
+      <Game {...props} />
+    </ErrorBoundary>
+  )
+}
+function EntryForm({ form, setForm }) {
+  return (
+    <div>
+      <div className="flex gap8" style={{ marginBottom: 8 }}>
+        <span style={{ fontWeight: 700, color: 'var(--primary-deep)', width: 30 }}>借</span>
+        <select value={form.dAcc} onChange={(e) => setForm({ ...form, dAcc: e.target.value })} style={{ flex: 1, padding: 8, borderRadius: 8, border: '2px solid var(--line)' }}>
+          <option value="">选择科目</option>{ALL_ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <input type="number" value={form.dAmt} placeholder="金额" onChange={(e) => setForm({ ...form, dAmt: e.target.value })} style={{ width: 70, padding: 8, borderRadius: 8, border: '2px solid var(--line)' }} />
+      </div>
+      <div className="flex gap8">
+        <span style={{ fontWeight: 700, color: 'var(--accent-deep)', width: 30 }}>贷</span>
+        <select value={form.cAcc} onChange={(e) => setForm({ ...form, cAcc: e.target.value })} style={{ flex: 1, padding: 8, borderRadius: 8, border: '2px solid var(--line)' }}>
+          <option value="">选择科目</option>{ALL_ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <input type="number" value={form.cAmt} placeholder="金额" onChange={(e) => setForm({ ...form, cAmt: e.target.value })} style={{ width: 70, padding: 8, borderRadius: 8, border: '2px solid var(--line)' }} />
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 6 }}>借贷金额需相等</div>
+    </div>
+  )
+}
+57 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+function ReportLite({ report }) {
+  const title = report.type === 'balance' ? '资产负债表' : report.type === 'income' ? '利润表' : '现金流量表'
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{title}</div>
+      {report.type === 'cashflow' && report.note && (
+        <div style={{ fontSize: 10.5, color: 'var(--text-soft)', marginBottom: 4 }}>（{report.note}）</div>
+      )}
+      {report.rows.map((r, i) => {
+        if (r.level === 'h') return (
+          <div key={i} style={{ fontSize: 12, fontWeight: 800, marginTop: 6, color: 'var(--accent-deep)' }}>{r.item}</div>
+        )
+        const isTotal = r.level === 'total' || r.emphasize
+        const isSub = r.level === 'sub'
+        const neg = r.value != null && r.value < 0
+        return (
+          <div key={i} className="flex between center" style={{
+            fontSize: isTotal ? 12.5 : 12,
+            fontWeight: isTotal ? 800 : (isSub ? 700 : 400),
+            padding: '2px 0',
+            paddingLeft: isSub || isTotal ? 8 : 0,
+            borderTop: isTotal ? '1px solid #d9d2c4' : 'none',
+            color: neg ? '#C0392B' : (isTotal ? 'var(--primary-deep)' : 'var(--text)'),
+          }}>
+            <span>{r.item}</span>
+            <span>{r.value == null ? '' : '¥' + fmtW(r.value) + '万'}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+function RadarChart({ scores }) {
+  const axes = [
+    { key: 'profit', label: '盈利能力', value: scores.profit },
+    { key: 'cash', label: '现金流', value: scores.cash },
+    { key: 'risk', label: '低风险', value: scores.risk },
+    { key: 'compliance', label: '合规度', value: scores.compliance },
+  ]
+  const cx = 90, cy = 90, R = 66
+  const n = axes.length
+  const pt = (i, r) => {
+    const ang = (Math.PI * 2 * i) / n - Math.PI / 2
+    return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)]
+  }
+  const poly = axes.map((a, i) => pt(i, (a.value / 100) * R).join(',')).join(' ')
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>📊 经营能力雷达</div>
+      <svg width="180" height="180" viewBox="0 0 180 180" style={{ maxWidth: 220 }}>
+58 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+        {[0.25, 0.5, 0.75, 1].map((g, i) => (
+          <polygon key={i} points={axes.map((_, k) => pt(k, R * g).join(',')).join(' ')} fill="none" stroke="#e6e1d6" />
+        ))}
+        {axes.map((a, i) => {
+          const [x, y] = pt(i, R)
+          return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="#e6e1d6" />
+        })}
+        <polygon points={poly} fill="rgba(46,138,108,0.28)" stroke="var(--primary-deep)" strokeWidth="2" />
+        {axes.map((a, i) => {
+          const [x, y] = pt(i, (a.value / 100) * R)
+          return <circle key={i} cx={x} cy={y} r="3" fill="var(--primary-deep)" />
+        })}
+        {axes.map((a, i) => {
+          const [x, y] = pt(i, R + 14)
+          return <text key={i} x={x} y={y} fontSize="10" textAnchor="middle" fill="var(--text-soft)">{a.label}</text>
+        })}
+      </svg>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginTop: 4 }}>
+        {axes.map((a) => (
+          <span key={a.key} className="chip" style={{ fontSize: 11 }}>{a.label} {a.value}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+/* ===== 文件: pages/Home.jsx ===== */
+import { useNavigate } from 'react-router-dom'
+import { useUser } from '../store/UserContext.jsx'
+import { COMPANIES } from '../data/companies.js'
+import { TIERS } from '../data/tiers.js'
+export default function Home() {
+  const navigate = useNavigate()
+  const { state } = useUser()
+  const badgePct = Math.round((state.badges.length / 7) * 100)
+  return (
+    <div className="page fade-in">
+      <div className="hero">
+        <h1>嗨，{state.name}！👋</h1>
+        <p>开一家公司，在经营中自然学会会计～</p>
+        <div style={{ marginTop: 14 }}>
+          <div className="progress-track" style={{ background: 'rgba(255,255,255,.35)' }}>
+            <div className="progress-fill" style={{ width: badgePct + '%', background: '#fff' }} />
+          </div>
+          <div style={{ fontSize: 12, marginTop: 6, opacity: .95 }}>
+            已获徽章 {state.badges.length}/7 · Lv.{state.level} · 🪙{state.coins}
+          </div>
+        </div>
+      </div>
+      <div className="section-title">🎮 开始经营</div>
+      <div className="card" onClick={() => navigate('/game')} style={{ cursor: 'pointer', background: 'linear-gradient(135deg,#FFF1E8,#E9F8F6)' }}>
+59 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+        <div className="flex between center">
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>🏢 经营我的公司</div>
+            <div style={{ color: 'var(--text-soft)', fontSize: 13, marginTop: 4 }}>
+              选公司类型与难度，从创立到报表全过程实战
+            </div>
+          </div>
+          <span style={{ fontSize: 22 }}>›</span>
+        </div>
+      </div>
+      <div className="card" onClick={() => navigate('/reports')} style={{ cursor: 'pointer' }}>
+        <div className="flex between center">
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>📊 财务报表中心</div>
+            <div style={{ color: 'var(--text-soft)', fontSize: 13, marginTop: 4 }}>
+              查看资产负债表 / 利润表 / 现金流量表
+            </div>
+          </div>
+          <span style={{ fontSize: 22 }}>›</span>
+        </div>
+      </div>
+      <div className="section-title mt20">🏢 选哪种公司练手？</div>
+      {COMPANIES.map((c) => (
+        <div key={c.id} className="card" onClick={() => navigate('/game')} style={{ cursor: 'pointer' }}>
+          <div className="flex between center">
+            <div>
+              <div style={{ fontWeight: 800 }}>{c.emoji} {c.name}</div>
+              <div style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 3 }}>{c.blurb}</div>
+            </div>
+            <span className="chip">{'★'.repeat(c.difficulty)}</span>
+          </div>
+        </div>
+      ))}
+      <div className="section-title mt20">🎯 会计职称路径</div>
+      {TIERS.map((t) => (
+        <div key={t.id} className="card" onClick={() => navigate('/game')} style={{ cursor: 'pointer' }}>
+          <div className="flex between center">
+            <div>
+              <div style={{ fontWeight: 800 }}>{t.name}</div>
+              <div style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 3 }}>{t.desc}</div>
+            </div>
+            <span style={{ fontWeight: 800, color: t.color }}>›</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+/* ===== 文件: pages/Me.jsx ===== */
+import { useState } from 'react'
+60 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+import { useUser } from '../store/UserContext.jsx'
+import { BADGES } from '../data/badges.js'
+import { TIERS } from '../data/tiers.js'
+import { useNavigate } from 'react-router-dom'
+function runScore(r) {
+  return Math.round((r.profit || 0) * 10 + (r.stars || 0) * 50 + (r.months || 0) * 3)
+}
+const RANK_BASE = [
+  { name: '会计学霸喵', score: 1820, avatar: '🦁' },
+  { name: '算盘小能手', score: 1560, avatar: '🐯' },
+  { name: '账房先生', score: 1340, avatar: '🐻' },
+  { name: '小数点猎人', score: 980, avatar: '🐰' },
+  { name: '借贷平衡侠', score: 760, avatar: '🦊' },
+]
+const CO_NAMES = {
+  restaurant: '🍜 餐饮店', shop: '🛍️ 零售店', supermarket: '🏪 超市',
+  factory: '🏭 工厂', tech: '💡 科技工作室', farm: '🌾 农场',
+}
+export default function Me() {
+  const { state, dispatch } = useUser()
+  const navigate = useNavigate()
+  const [editing, setEditing] = useState(false)
+  const [name, setName] = useState(state.name)
+  const myRuns = (state.runHistory || []).map((r) => ({
+    name: `${state.name}·${CO_NAMES[r.coId] || r.coName || '公司'}`,
+    score: runScore(r), avatar: state.avatar, me: true, run: r,
+  }))
+  const rankList = [...RANK_BASE, ...myRuns].sort((a, b) => b.score - a.score)
+  const myBest = myRuns.length ? myRuns.reduce((a, b) => (b.score > a.score ? b : a)) : null
+  const myRank = myBest ? rankList.findIndex((r) => r.me && r.score === myBest.score) + 1 : null
+  const coBest = {}
+  ;(state.runHistory || []).forEach((r) => {
+    if (!coBest[r.coId] || runScore(r) > runScore(coBest[r.coId])) coBest[r.coId] = r
+  })
+  const coCompare = Object.values(coBest).sort((a, b) => runScore(b) - runScore(a))
+  const earned = BADGES.filter((b) => state.badges.includes(b.id))
+  const locked = BADGES.filter((b) => !state.badges.includes(b.id))
+  const saveName = () => {
+    dispatch({ type: 'SET_NAME', name: name || '小会计' })
+    setEditing(false)
+  }
+  return (
+    <div className="page fade-in">
+      <div className="card" style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 48 }}>{state.avatar}</div>
+        {editing ? (
+          <div className="mt12">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+61 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+              style={{ padding: 10, borderRadius: 10, border: '2px solid var(--line)', textAlign: 'center', fontWeight: 700 }}
+            />
+            <button className="btn mt12" onClick={saveName}>保存</button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>{state.name}</div>
+            <div style={{ color: 'var(--text-soft)', fontSize: 13 }}>Lv.{state.level} · {TIERS.find((t) => t.id === state.tier)?.name}</div>
+            <button className="btn ghost mt12" style={{ width: 'auto', padding: '6px 14px', fontSize: 13 }} onClick={() => setEditing(true)}>✏️ 改名</button>
+          </div>
+        )}
+        <div className="flex gap8 mt20">
+          <div className="pill coins" style={{ flex: 1, justifyContent: 'center' }}>🪙 {state.coins}</div>
+          <div className="pill level" style={{ flex: 1, justifyContent: 'center' }}>⭐ 经验 {state.exp}</div>
+        </div>
+      </div>
+      <div className="section-title">🎯 我的职称</div>
+      <div className="flex gap8" style={{ flexWrap: 'wrap' }}>
+        {TIERS.map((t) => (
+          <button
+            key={t.id}
+            className={`btn ${state.tier === t.id ? '' : 'ghost'}`}
+            style={{ width: 'auto', padding: '8px 14px', fontSize: 13 }}
+            onClick={() => dispatch({ type: 'SET_TIER', tier: t.id })}
+          >
+            {t.name}
+          </button>
+        ))}
+      </div>
+      <div className="section-title mt20">🏅 徽章 ({earned.length}/{BADGES.length})</div>
+      <div className="badge-grid">
+        {earned.map((b) => (
+          <div key={b.id} className="badge-item" title={b.desc}>
+            <div className="b-emoji">{b.emoji}</div>
+            <div className="b-name">{b.name}</div>
+          </div>
+        ))}
+        {locked.map((b) => (
+          <div key={b.id} className="badge-item locked" title={b.desc}>
+            <div className="b-emoji">🔒</div>
+            <div className="b-name">{b.name}</div>
+          </div>
+        ))}
+      </div>
+      <div className="section-title mt20">📊 经营排行榜（本地）</div>
+      <div className="card" style={{ padding: 8 }}>
+        {rankList.map((r, i) => (
+          <div key={i} className={'rank-row' + (r.me ? ' me' : '')}>
+            <span className="rk">{i + 1}</span>
+            <span style={{ fontSize: 22 }}>{r.avatar}</span>
+62 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+            <span className="nm">{r.name}{r.me ? '（我）' : ''}</span>
+            <span className="sc">{r.score}</span>
+          </div>
+        ))}
+        <div style={{ textAlign: 'center', color: 'var(--text-soft)', fontSize: 12, marginTop: 6 }}>
+          {myRank ? `我的排名：第 ${myRank} 名 · 加油冲榜！🚀` : '多玩几局就能登上排行榜啦～'}
+        </div>
+      </div>
+      {/* G: 多公司横向对比 —— 各类公司已体验的最佳一局 */}
+      <div className="section-title mt20">🏢 多公司对比</div>
+      {coCompare.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-soft)', fontSize: 13 }}>
+          还没有经营记录，去开一家公司吧！
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.8fr 0.8fr', fontSize: 11, color: 'var(--text-soft)', padding: '4px 6px' }}>
+            <span>公司类型</span><span>净利润(万)</span><span>星级</span><span>月份</span>
+          </div>
+          {coCompare.map((r, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 0.8fr 0.8fr', alignItems: 'center', padding: '7px 6px', borderTop: i ? '1px solid var(--line)' : 'none', fontSize: 13 }}>
+              <span>{CO_NAMES[r.coId] || r.coName}</span>
+              <span style={{ fontWeight: 700, color: (r.profit || 0) >= 0 ? 'var(--primary-deep)' : '#E5484D' }}>{r.profit >= 0 ? '+' : ''}{r.profit}</span>
+              <span>{'⭐'.repeat(r.stars || 0)}</span>
+              <span>{r.months}月</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 6, lineHeight: 1.6 }}>
+            提示：用不同公司类型、不同纳税人身份或出资方式多开几局，对比哪种组合最赚钱——这就是"平行经营"的乐趣。
+          </div>
+        </div>
+      )}
+      <button className="btn ghost mt12" onClick={() => navigate('/')}>🏠 回到首页</button>
+      <button className="btn ghost mt12" onClick={() => { if (confirm('确定重置所有进度？')) dispatch({ type: 'RESET' }) }} style={{ color: '#FF6B6B' }}>
+        ♻️ 重置进度
+      </button>
+    </div>
+  )
+}
+/* ===== 文件: pages/Reports.jsx ===== */
+import { useState, useRef } from 'react'
+import { COMPANIES } from '../data/companies.js'
+import { createCompany, applyBusiness, monthEnd, buildReports, applyFunding, applyTaxType, vatOnSale, vatOnPurchase, settleTax, DIFFICULTY } from '../lib/engine.js'
+import ReportView from '../components/ReportView.jsx'
+export default function Reports() {
+  const [coId, setCoId] = useState('shop')
+  const [diffId, setDiffId] = useState('easy')
+  const [report, setReport] = useState(null)
+  const [reportReady, setReportReady] = useState(false)
+  const reportRef = useRef(null)
+63 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  const generate = () => {
+    const co = COMPANIES.find((c) => c.id === coId)
+    const s = createCompany(coId, diffId)
+    applyFunding(s, 'full')
+    applyTaxType(s, 'small')
+    co.fixedAssets.forEach((fa) => applyBusiness(s, [
+      { side: 'debit', account: '固定资产', amount: fa.value },
+      { side: 'credit', account: '银行存款', amount: fa.value },
+    ], `购置${fa.name}`))
+    for (let m = 1; m <= 2; m++) {
+      const ds = co.economics.dealSize * s.scale
+      applyBusiness(s, vatOnPurchase(s, ds, false).entries, '进货')
+      applyBusiness(s, vatOnSale(s, ds, co.revenueAccount).entries, '卖货')
+      applyBusiness(s, co.costOfSale(ds * (1 - co.economics.margin)), '结转成本')
+      applyBusiness(s, [{ side: 'debit', account: '管理费用-房租', amount: co.economics.rent * s.scale }, { side: 'credit', account: '银行存款', amount: co.economics.rent * s.scale }], '付房租')
+      applyBusiness(s, [{ side: 'debit', account: '管理费用-工资', amount: co.economics.salary * s.scale }, { side: 'credit', account: '应付职工薪酬', amount: co.economics.salary * s.scale }], '计提工资')
+      monthEnd(s)
+    }
+    settleTax(s)
+    setReport(buildReports(s))
+    setReportReady(true)
+  }
+  return (
+    <div className="page fade-in">
+      <div className="card">
+        <div className="section-title" style={{ marginTop: 0 }}>📊 财务报表中心</div>
+        <div className="sub-title">选公司类型，一键生成真实三张表（含平衡校验）</div>
+        <div className="flex gap8" style={{ flexWrap: 'wrap' }}>
+          {COMPANIES.map((c) => (
+            <button key={c.id} className={`btn ghost ${coId === c.id ? '' : 'ghost'}`} style={{ width: 'auto', padding: '8px 12px' }} onClick={() => setCoId(c.id)}>{c.emoji} {c.name}</button>
+          ))}
+        </div>
+        <div className="flex gap8 mt12">
+          {Object.values(DIFFICULTY).map((d) => (
+            <button key={d.id} className="btn ghost" style={{ width: 'auto', padding: '8px 12px' }} onClick={() => setDiffId(d.id)}>{d.name}</button>
+          ))}
+        </div>
+        <button className="btn mt12" onClick={() => { generate(); setTimeout(() => reportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50) }}>🪄 {reportReady ? '重新生成报表' : '生成报表'}</button>
+      </div>
+      {report ? (
+        <div ref={reportRef}>
+          <ReportView report={report.balance} />
+          <ReportView report={report.income} />
+        </div>
+      ) : (
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-soft)' }}>
+          点击「生成报表」查看资产负债表与利润表
+        </div>
+      )}
+    </div>
+64 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  )
+}
+/* ===== 文件: store/UserContext.jsx ===== */
+import React, { createContext, useContext, useEffect, useReducer } from 'react'
+const STORAGE_KEY = 'accounting_game_user_v1'
+const defaultState = {
+  name: '小会计',
+  avatar: '🐱',
+  coins: 0,
+  exp: 0,
+  level: 1,
+  tier: 'primary', // primary | middle | senior
+  completedLevels: [], // 历史保留字段（兼容）
+  badges: [], // badge ids earned
+  gameBestProfit: 0,
+  companiesRun: [], // 已体验的公司类型 id
+  runHistory: [], // H: 每局通关记录 { coId, coName, profit, stars, months, date }
+}
+function reducer(state, action) {
+  switch (action.type) {
+    case 'ADD_COINS':
+      return { ...state, coins: state.coins + action.amount }
+    case 'ADD_EXP': {
+      const exp = state.exp + action.amount
+      const level = Math.floor(exp / 100) + 1
+      return { ...state, exp, level }
+    }
+    case 'COMPLETE_LEVEL': {
+      const done = state.completedLevels.includes(action.id)
+        ? state.completedLevels
+        : [...state.completedLevels, action.id]
+      return { ...state, completedLevels: done }
+    }
+    case 'EARN_BADGE': {
+      if (state.badges.includes(action.id)) return state
+      return { ...state, badges: [...state.badges, action.id] }
+    }
+    case 'SET_GAME_BEST': {
+      const best = Math.max(state.gameBestProfit, action.profit)
+      let badges = state.badges
+      if (best >= 500 && !badges.includes('boss500')) badges = [...badges, 'boss500']
+      if (best >= 2000 && !badges.includes('tycoon')) badges = [...badges, 'tycoon']
+      return { ...state, gameBestProfit: best, badges }
+    }
+    case 'SET_TIER':
+      return { ...state, tier: action.tier }
+    case 'COMPANY_RUN': {
+      if (state.companiesRun.includes(action.id)) return state
+      return { ...state, companiesRun: [...state.companiesRun, action.id] }
+    }
+65 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+    case 'RECORD_RUN': {
+      const run = {
+        coId: action.coId,
+        coName: action.coName,
+        profit: +(action.profit || 0).toFixed(2),
+        stars: action.stars || 0,
+        months: action.months || 0,
+        date: action.date || new Date().toISOString().slice(0, 10),
+      }
+      return { ...state, runHistory: [...state.runHistory, run] }
+    }
+    case 'SET_NAME':
+      return { ...state, name: action.name, avatar: action.avatar || state.avatar }
+    case 'RESET':
+      return { ...defaultState }
+    default:
+      return state
+  }
+}
+const UserContext = createContext(null)
+export function UserProvider({ children }) {
+  const [state, dispatch] = useReducer(reducer, defaultState, (init) => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) return { ...defaultState, ...JSON.parse(raw) }
+    } catch (e) {}
+    return init
+  })
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch (e) {}
+  }, [state])
+  return (
+    <UserContext.Provider value={{ state, dispatch }}>{children}</UserContext.Provider>
+  )
+}
+export function useUser() {
+  const ctx = useContext(UserContext)
+  if (!ctx) throw new Error('useUser must be used within UserProvider')
+  return ctx
+}
+/* ===== 文件: styles/global.css ===== */
+:root {
+  --bg-soft: #FFF7EC;
+  --bg-card: #FFFFFF;
+  --primary: #FF8A5B;
+  --primary-deep: #F2693F;
+  --accent: #4ECDC4;
+  --accent-deep: #2BB3A8;
+  --gold: #FFC93C;
+  --text: #3D3A4B;
+66 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  --text-soft: #8B89A0;
+  --line: #F0E6D8;
+  --debit: #FF8A5B;
+  --credit: #4ECDC4;
+  --shadow: 0 8px 24px rgba(255, 138, 91, 0.12);
+  --shadow-strong: 0 12px 32px rgba(255, 138, 91, 0.22);
+  --radius: 20px;
+  --radius-sm: 12px;
+}
+html, body, #root { height: 100%; }
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  background: linear-gradient(160deg, #FFF7EC 0%, #FFEFE0 100%);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+.app-shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  margin: 0 auto;
+  position: relative;
+  background: linear-gradient(160deg, #FFF7EC 0%, #FFEFE0 100%);
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: rgba(255, 247, 236, 0.92);
+  backdrop-filter: blur(8px);
+}
+.topbar .title { font-size: 18px; font-weight: 800; letter-spacing: 1px; }
+.topbar .spacer { flex: 1; }
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card);
+  border-radius: 999px;
+67 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  padding: 6px 12px;
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: var(--shadow);
+}
+.pill.coins { color: var(--primary-deep); }
+.pill.level { color: var(--accent-deep); }
+.page { flex: 1; padding: 18px 18px 96px; }
+.section-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 6px 0 14px;
+}
+.sub-title { color: var(--text-soft); font-size: 13px; margin-bottom: 16px; }
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  margin-bottom: 14px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  padding: 13px 18px;
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  transition: transform .12s ease, box-shadow .12s ease;
+  width: 100%;
+}
+.btn:active { transform: scale(0.96); }
+.btn.secondary { background: var(--accent); }
+.btn.ghost { background: #fff; color: var(--primary-deep); box-shadow: inset 0 0 0 2px var(--line); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  background: var(--bg-card);
+  box-shadow: 0 -6px 20px rgba(0,0,0,0.06);
+68 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  border-radius: 24px 24px 0 0;
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+}
+.bottom-nav .nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-soft);
+  background: none;
+  font-weight: 600;
+}
+.bottom-nav .nav-item.active { color: var(--primary-deep); }
+.bottom-nav .nav-item .emoji { font-size: 22px; }
+.progress-track {
+  height: 10px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--primary));
+  border-radius: 999px;
+  transition: width .5s ease;
+}
+.level-card {
+  position: relative;
+  overflow: hidden;
+}
+.level-card .lv-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.level-card .lv-icon {
+  width: 46px; height: 46px;
+  border-radius: 14px;
+  display: grid; place-items: center;
+  font-size: 24px;
+  background: var(--bg-soft);
+  flex-shrink: 0;
+}
+.level-card .lv-name { font-weight: 800; font-size: 16px; }
+.level-card .lv-desc { color: var(--text-soft); font-size: 12px; margin-top: 2px; }
+.level-card .lv-badge {
+  margin-left: auto;
+69 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.lv-badge.done { background: #E4F8F1; color: var(--accent-deep); }
+.lv-badge.lock { background: #F2EEE9; color: var(--text-soft); }
+.lv-badge.todo { background: #FFEFE2; color: var(--primary-deep); }
+.chip {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--bg-soft);
+  color: var(--primary-deep);
+  margin: 0 6px 6px 0;
+}
+.tier-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 18px 0 10px;
+  font-weight: 800;
+  font-size: 15px;
+}
+.tier-bar .dot { width: 10px; height: 10px; border-radius: 50%; }
+.tier-bar.primary .dot { background: var(--accent); }
+.tier-bar.middle .dot { background: var(--primary); }
+.tier-bar.senior .dot { background: var(--gold); }
+.option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  margin-bottom: 10px;
+  font-weight: 600;
+  border: 2px solid transparent;
+  transition: all .15s ease;
+}
+.option.selected { border-color: var(--primary); background: #FFF1E8; }
+.option.correct { border-color: var(--accent); background: #E4F8F1; }
+.option.wrong { border-color: #FF6B6B; background: #FFEDED; }
+.option .opt-key {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  display: grid; place-items: center;
+70 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  font-weight: 800;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.option.correct .opt-key { background: var(--accent); color: #fff; }
+.option.wrong .opt-key { background: #FF6B6B; color: #fff; }
+.entry-row {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.entry-side {
+  flex: 1;
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  position: relative;
+  opacity: 0;
+  transform: translateY(14px);
+  animation: pop-in .5s ease forwards;
+}
+.entry-side.debit { background: #FFF1E8; border-left: 5px solid var(--debit); }
+.entry-side.credit { background: #E9F8F6; border-left: 5px solid var(--credit); }
+.entry-side .label { font-size: 12px; font-weight: 800; letter-spacing: 1px; }
+.entry-side.debit .label { color: var(--primary-deep); }
+.entry-side.credit .label { color: var(--accent-deep); }
+.entry-side .acc { font-size: 15px; font-weight: 700; margin-top: 4px; }
+.entry-side .amt { margin-left: auto; font-weight: 800; }
+.entry-amount-line {
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; color: var(--text-soft);
+}
+@keyframes pop-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+.delay-1 { animation-delay: .15s; }
+.delay-2 { animation-delay: .3s; }
+.delay-3 { animation-delay: .45s; }
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 110px;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+  z-index: 50;
+71 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+  box-shadow: var(--shadow-strong);
+  animation: toast-in .3s ease;
+}
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 10px); } }
+.shop-stat {
+  display: flex;
+  justify-content: space-between;
+  background: var(--bg-soft);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.shop-stat .v { color: var(--primary-deep); }
+.modal-mask {
+  position: fixed; inset: 0;
+  background: rgba(61,58,75,0.45);
+  display: grid; place-items: center;
+  z-index: 60; padding: 20px;
+}
+.modal {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 22px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: var(--shadow-strong);
+  animation: pop-in .3s ease;
+}
+.badge-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+.badge-item {
+  text-align: center;
+  background: var(--bg-soft);
+  border-radius: var(--radius-sm);
+  padding: 14px 6px;
+}
+.badge-item.locked { filter: grayscale(1); opacity: .45; }
+.badge-item .b-emoji { font-size: 30px; }
+.badge-item .b-name { font-size: 12px; font-weight: 700; margin-top: 4px; }
+.rank-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  margin-bottom: 8px;
+}
+.rank-row.me { background: #FFF1E8; border: 2px solid var(--primary); }
+.rank-row .rk { width: 26px; text-align: center; font-weight: 800; }
+.rank-row .nm { flex: 1; font-weight: 700; }
+.rank-row .sc { color: var(--primary-deep); font-weight: 800; }
+72 / 73
+
+
+会计小当家教学软件 V2.0.4
+————————————————————————————————————————
+.hero {
+  background: linear-gradient(135deg, var(--primary), var(--gold));
+  border-radius: var(--radius);
+  padding: 22px;
+  color: #fff;
+  box-shadow: var(--shadow-strong);
+  margin-bottom: 16px;
+}
+.hero h1 { font-size: 24px; font-weight: 900; margin-bottom: 6px; }
+.hero p { font-size: 13px; opacity: .92; }
+.flex { display: flex; }
+.between { justify-content: space-between; }
+.center { align-items: center; }
+.gap8 { gap: 8px; }
+.mt12 { margin-top: 12px; }
+.mt20 { margin-top: 20px; }
+.fade-in { animation: toast-in .4s ease; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+73 / 73
+
+
