@@ -100,15 +100,22 @@ cd android
 
 | 平台 | 文件 | 大小 | 说明 |
 | --- | --- | --- | --- |
-| 🤖 安卓 | [app-release-2.0.1.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.1/app-release-2.0.1.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
-| 🪟 Windows（Electron 便携版） | [kjxdj-electron-2.0.1-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.1/kjxdj-electron-2.0.1-portable.exe) | 81 MB | 双击即用，免安装 |
-| 🪟 Windows（Tauri 版） | [kjxdj-tauri-2.0.1.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.1/kjxdj-tauri-2.0.1.exe) | 4.3 MB | 体积更小、启动更快，双击即用 |
-| 🪟 Windows（Tauri 安装版） | [kjxdj-tauri-2.0.1-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.1/kjxdj-tauri-2.0.1-setup.exe) | 1.2 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
+| 🤖 安卓 | [app-release.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/app-release.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
+| 🪟 Windows（Electron 便携版） | [kjxdj-electron-2.0.4-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/kjxdj-electron-2.0.4-portable.exe) | 78 MB | 双击即用，免安装 |
+| 🪟 Windows（Tauri 安装版） | [会计小当家_2.0.4_x64-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6_2.0.4_x64-setup.exe) | 1.2 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
+| 🪟 Windows（Tauri 便携版） | [会计小当家.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6.exe) | 4.3 MB | 体积更小、启动更快，双击即用 |
 
-> 所有安装包发布于 Release **[v2.0.1](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v2.0.1)**。v2.0.0 已被清理，请下载 v2.0.1（含 Tauri 启动修复与会计引擎校验修复）。
-> 文件名为英文，以避免中文文件名在部分系统下显示异常。
+> 所有安装包发布于 Release **[v2.0.4](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v2.0.4)**。
+> Tauri 安装版 / 便携版使用中文文件名，下载时若浏览器提示请正常保存，安装后在开始菜单 / 桌面快捷方式启动。
 >
 > ⚠️ Windows 安装包暂未做代码签名，首次运行若遇 SmartScreen 提示「请在打开前确保信任」，请点击「更多信息」→「仍要运行」即可正常启动（并非病毒，详见 Release 说明）。
+
+### v2.0.4 更新内容
+- 🎯 **研发加计扣除仅限科技类企业**：联塑零售等非科技型公司不再能选「研发」相关筹划，选了会提示「无符合条件的研发活动」，避免设定脱戏。
+- 📊 **决策即时财务诊断**：每个分支选择、每笔分录、每月结账后，即时弹出结构化财务分析与诊断卡片（影响科目、关注点、合规提示、关键指标快照）。
+- 📑 **新增现金流量表（第三张主表）**：报表区补齐间接法现金流量表，与资产负债表、利润表三表勾稽，现金净增加额 ≡ 期末货币资金。
+- 🐛 修复：利润表 / 资产负债表亏损金额负号被吞（负数正确显示并标红）。
+- 🐛 修复：利润表月中 / 月末数据失真（损益累计改为实时追踪，不再依赖月末清零）。
 
 ### v2.0.1 修复内容
 - 🐛 **修复 Tauri 桌面启动运行时 `moodFactor is not defined` 报错**：旧 v2.0.0 Tauri 包内含陈旧 dist 资源导致选择业务时崩溃，已重新构建并上传 2.0.1。
