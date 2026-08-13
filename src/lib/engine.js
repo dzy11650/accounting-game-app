@@ -92,6 +92,18 @@ export function createCompany(companyId, diffId = 'easy', projectId = null) {
     evilCount: 0,                  // 累计"邪道玩法"次数
     evilEvents: [],                // 已埋下的雷：{atYear, type}（恶果延迟爆发）
     skippedTaxMonths: 0,           // 累计未缴税月数（用于爆雷时补缴+罚款）
+    // —— 第七章邪道·工资拖欠扩展 ——
+    wageDiscontent: 0,             // 隐藏不满度 0~100（拖欠工资累积，影响效率）
+    wageStrikes: 0,                // 罢工黑历史次数（越多越易再罢工、损失越大）
+    wageUnpaid: 0,                 // 累计欠薪额（万）
+    strikeThisMonth: false,        // 本月是否发生罢工（影响本月效率与成本）
+    pendingStrike: null,           // 罢工待处理：{month} → UI 弹窗三选一
+    // —— 第七章邪道·税务偷逃扩展 ——
+    taxAdjusts: 0,                 // 调账改应纳税额次数（产生分录，按次数定稽查概率）
+    taxAdjustAmount: 0,            // 累计调账虚减的税额（被查到需补回）
+    taxOwed: 0,                    // 直接拖欠的累计税额（产生每日万分之五滞纳金）
+    taxLateFee: 0,                 // 累计滞纳金（万）
+    auditHits: 0,                  // 被税务局查处次数（黑历史）
     totalDividend: 0,              // 累计已分红净额（股东实得）
     quarterRevenue: 0,             // 本季度累计营收（用于小规模免税判定）
     usedTaxPlans: [],              // 已采用的合法筹划手段 id 列表
@@ -350,6 +362,12 @@ export function monthEnd(state, opts = {}) {
     state.year = (state.year || 1) + 1
     state.yearMood = rollYearMood()
   }
+  // 邪道·税务：每月滚动欠税滞纳金（每日万分之五，按月 30 天计）
+  accrueTaxLateFee(state)
+  // 邪道·工资：每月末按概率触发罢工（结果写入 pendingStrike 供 UI 弹窗）
+  rollStrike(state)
+  // 邪道·税务：每月小概率税务局稽查（按调账次数 / 拖欠月数放大）
+  taxAudit(state, m)
   // 持续经营：每年末检测邪道爆雷（延迟多年）
   maybeEvilBlowup(state, m)
 
@@ -498,24 +516,159 @@ export function investEff(state) {
 // 邪道玩法：记录一次违规操作（不发工资 / 不交税 / 虚开发票 等）
 // 返回提示文字。违规越多，后续爆雷概率越高；恶果会延迟数年后爆发。
 export function evilAct(state, kind) {
-  state.evilCount = (state.evilCount || 0) + 1
-  if (kind === 'salary') {
-    // 不发工资：省下工资成本但欠薪，埋雷
-    const due = +state.balances['应付职工薪酬'].toFixed(2)
-    // 不计入费用，直接记为欠薪（挂账）
-    return `😈 你选择拖欠工资。当月省下成本，但欠薪已记入「应付职工薪酬」，未来劳动稽查随时可能爆发。`
-  }
-  if (kind === 'tax') {
-    // 不交税：应交税费挂着不缴，累计 skippedTaxMonths
-    const due = +sumAccount(state.balances, '应交税费').toFixed(2)
-    state.skippedTaxMonths = (state.skippedTaxMonths || 0) + 1
-    return `😈 你选择偷逃税款。税款挂在「应交税费」，但税务稽查后将被追缴 + 0.5倍罚款，且越拖越狠。`
-  }
+  if (kind === 'salary') return evilSalary(state)
+  if (kind === 'taxAdjust') return evilTaxAdjust(state)
+  if (kind === 'taxOwe') return evilTaxOwe(state)
   if (kind === 'fakeInvoice') {
-    // 虚开发票冲成本：虚增成本（少交税）但风险极高
-    return `😈 你选择虚开发票冲账。短期少缴税，但虚开发票是刑事红线，随时可能爆雷。`
+    state.evilCount = (state.evilCount || 0) + 1
+    return `😈 你选择虚开发票冲账。短期虚增成本少缴税，但虚开发票是刑事红线，随时可能爆雷。`
   }
   return `😈 你选择了一条邪道。`
+}
+
+// 邪道·拖欠工资：当月不计提工资（省成本），欠薪挂账累计，隐藏不满度上升
+export function evilSalary(state) {
+  const due = +(state.co.economics.salary * (state.scale || 1)).toFixed(1)
+  state.evilCount = (state.evilCount || 0) + 1
+  state.wageUnpaid = +((state.wageUnpaid || 0) + due).toFixed(2)
+  state.balances['应付职工薪酬'] = +((state.balances['应付职工薪酬'] || 0) + due).toFixed(2)
+  // 不满度累积：基础涨幅 + 随机波动 + 黑历史放大（越欠越怨）
+  const bump = +(16 + Math.random() * 12 + (state.wageStrikes || 0) * 4).toFixed(1)
+  state.wageDiscontent = Math.min(100, +((state.wageDiscontent || 0) + bump).toFixed(1))
+  return `😈 你拖欠了本月工资（欠薪累计 ¥${state.wageUnpaid}万）。员工满意度下滑，不满度升至 ${Math.round(state.wageDiscontent)}，效率开始受损，罢工风险正在累积。`
+}
+
+// 邪道·税务调账：修改应纳税额（产生真实分录把税额做低），按调账次数定稽查概率
+// ratio: 本次调减比例（0~0.9），调账金额 = 当前应交税费 × ratio
+export function evilTaxAdjust(state, ratio = 0.5) {
+  const due = +sumAccount(state.balances, '应交税费').toFixed(2)
+  if (due <= 0) return `当前没有应纳税额可调整。`
+  const cut = +(due * Math.min(0.9, Math.max(0, ratio))).toFixed(2)
+  state.evilCount = (state.evilCount || 0) + 1
+  state.taxAdjusts = (state.taxAdjusts || 0) + 1
+  state.taxAdjustAmount = +((state.taxAdjustAmount || 0) + cut).toFixed(2)
+  // 调账分录：借「应交税费」减少负债，贷「所得税费用」(红字冲减利润，使当期税更低)
+  const entries = [
+    ...mk('应交税费', cut, '所得税费用', cut, '调账：调减本期应纳税额（违规）'),
+  ]
+  applyBusiness(state, entries, '税务调账（违规）', state.month)
+  return `😈 你通过调账把应纳税额调减了 ¥${cut}万（累计已调减 ¥${state.taxAdjustAmount}万）。账面少缴了税，但调账次数越多，被税务局稽查的概率越高。`
+}
+
+// 邪道·直接拖欠税款：把本期应缴税额挂账不缴，每日万分之五滞纳金
+export function evilTaxOwe(state) {
+  const due = +sumAccount(state.balances, '应交税费').toFixed(2)
+  if (due <= 0) return `当前没有应纳税额可拖欠。`
+  state.evilCount = (state.evilCount || 0) + 1
+  state.taxOwed = +((state.taxOwed || 0) + due).toFixed(2)
+  state.skippedTaxMonths = (state.skippedTaxMonths || 0) + 1
+  // 应交税费仍挂账（不缴），下月计提滞纳金
+  return `😈 你直接拖欠了本期税款 ¥${due}万（累计拖欠 ¥${state.taxOwed}万）。从拖欠之日起按日加收万分之五滞纳金，越拖越贵。`
+}
+
+// 罢工解决：玩家在罢工弹窗三选一
+// option: 'full' 全额补发 | 'partial' 部分(50%)补发 | 'over' 超额(150%)补发
+export function resolveStrike(state, option) {
+  state.wageStrikes = (state.wageStrikes || 0) + 1 // 无论哪种都记一次黑历史
+  const owed = state.wageUnpaid || 0
+  const cash = state.balances['银行存款'] || 0
+  let pay, note
+  if (option === 'partial') {
+    pay = +(owed * 0.5).toFixed(2)
+    state.wageDiscontent = Math.max(0, +((state.wageDiscontent || 0) - 40).toFixed(1))
+    state.wageUnpaid = +(owed - pay).toFixed(2)
+    note = `部分补发：发放 ¥${pay}万（欠薪还剩 ¥${state.wageUnpaid}万），不满度下降但仍未平复。`
+  } else if (option === 'over') {
+    pay = +(owed * 1.5).toFixed(2)
+    state.wageDiscontent = 0
+    state.wageUnpaid = 0
+    note = `超额补发：发放 ¥${pay}万（含 50% 安抚金），员工感激，不满度清零、欠薪结清。`
+  } else { // full
+    pay = +owed.toFixed(2)
+    state.wageDiscontent = 0
+    state.wageUnpaid = 0
+    note = `全额补发：发放 ¥${pay}万，欠薪结清、不满度清零，但这次罢工已记入黑历史。`
+  }
+  pay = Math.min(pay, +(cash + owed).toFixed(2)) // 不会凭空变出钱
+  const entries = [
+    ...mk('应付职工薪酬', Math.min(owed, pay), '银行存款', Math.min(owed, pay), `罢工后补发工资(${option})`),
+  ]
+  if (option === 'over' && pay > owed) {
+    entries.push(...mk('管理费用-工资', +(pay - owed).toFixed(2), '银行存款', +(pay - owed).toFixed(2), '罢工安抚金(超额)'))
+  }
+  applyBusiness(state, entries, '罢工补发', state.month)
+  state.pendingStrike = null
+  state.strikeThisMonth = true
+  return `🪧 罢工结束。${note}`
+}
+
+// 工资效率系数：受影响于隐藏不满度与本月罢工。返回 0.3~1
+export function wageEfficiency(state) {
+  const d = state.wageDiscontent || 0
+  let f = 1 - (d / 100) * 0.45            // 不满度最高拉低 45% 效率
+  if (state.strikeThisMonth) f *= 0.4    // 罢工当月再打四折
+  return +Math.max(0.25, f).toFixed(3)
+}
+
+// 每月末滚动：欠税滞纳金（每日万分之五，按月 30 天计）
+export function accrueTaxLateFee(state) {
+  if ((state.taxOwed || 0) <= 0) return 0
+  const fee = +(state.taxOwed * 0.0005 * 30).toFixed(3)
+  state.taxLateFee = +((state.taxLateFee || 0) + fee).toFixed(3)
+  return fee
+}
+
+// 每月末判定是否罢工：欠薪越多、不满度越高、黑历史越多，概率越大
+export function rollStrike(state) {
+  state.strikeThisMonth = false
+  if ((state.wageUnpaid || 0) <= 0) return false
+  const d = state.wageDiscontent || 0
+  const p = Math.min(0.85, 0.05 + (d / 100) * 0.45 + (state.wageStrikes || 0) * 0.08)
+  if (Math.random() <= p) {
+    state.strikeThisMonth = true
+    state.pendingStrike = { month: state.month }
+    return true
+  }
+  return false
+}
+
+// 税务局稽查（调账 / 拖欠）：每月小概率，按调账次数与拖欠月数放大
+export function taxAudit(state, month) {
+  state.pendingAudit = null
+  const adjustP = Math.min(0.6, 0.08 * (state.taxAdjusts || 0))      // 调账次数越多越易查
+  const oweP = Math.min(0.5, 0.06 * (state.skippedTaxMonths || 0))  // 拖欠越久越易查
+  const p = Math.max(adjustP, oweP)
+  if (p <= 0) return null
+  if (Math.random() > p) return null
+
+  const year = state.year
+  const events = []
+  let entries = []
+  state.auditHits = (state.auditHits || 0) + 1
+  // 1) 调账虚减的税额：补回 + 0.5 倍罚款
+  if ((state.taxAdjustAmount || 0) > 0) {
+    const back = +state.taxAdjustAmount.toFixed(2)
+    const fine = +(back * 0.5).toFixed(2)
+    entries.push(...mk('所得税费用', back, '应交税费', back, `税务稽查：调账不实，补回税款¥${back}万`))
+    entries.push(...mk('所得税费用', fine, '银行存款', fine, `税务稽查罚款¥${fine}万`))
+    events.push(`调账被查：补回税款¥${back}万、罚款¥${fine}万`)
+  }
+  // 2) 直接拖欠的税款：补缴 + 滞纳金
+  if ((state.taxOwed || 0) > 0) {
+    const back = +state.taxOwed.toFixed(2)
+    const late = +(state.taxLateFee || 0).toFixed(2)
+    entries.push(...mk('应交税费', back, '银行存款', back, `税务稽查：补缴拖欠税款¥${back}万`))
+    if (late > 0) entries.push(...mk('管理费用-滞纳金', late, '银行存款', late, `补缴滞纳金¥${late}万`))
+    events.push(`拖欠被查：补缴税款¥${back}万${late > 0 ? `、滞纳金¥${late}万` : ''}`)
+    state.taxOwed = 0; state.taxLateFee = 0; state.skippedTaxMonths = 0
+  }
+  if (entries.length) {
+    applyBusiness(state, entries, `税务稽查（第${year}年${month}月）`, month)
+  }
+  const msg = `🚨 第${year}年${month}月税务稽查！${events.join('；')}。`
+  state.pendingAudit = msg
+  if (isBankrupt(state)) { state.failed = true; state.failedReason = msg }
+  return msg
 }
 
 // 每年末（monthEnd 后）检测邪道爆雷：恶果延迟爆发，违规越多越易出事
@@ -577,7 +730,9 @@ export function genOrder(state, rng = Math.random) {
   const co = state.co
   const base = co.economics.dealSize * (state.scale || 1)
   const sizeRoll = 0.6 + rng() * 0.9                 // 0.6~1.5 倍基准
-  const amount = +(base * sizeRoll * moodFactor(state)).toFixed(2)
+  // 工资效率（不满度/罢工）直接压低可承接的生意规模，影响营收与成本
+  const we = wageEfficiency(state)
+  const amount = +(base * sizeRoll * moodFactor(state) * we).toFixed(2)
   const margin = +(co.economics.margin * (0.7 + rng() * 0.6)).toFixed(2) // 毛利率波动
   const creditRoll = rng()
   const credit = creditRoll < 0.45 ? 0 : creditRoll < 0.8 ? (rng() < 0.5 ? 1 : 2) : 3

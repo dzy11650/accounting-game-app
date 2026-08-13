@@ -9,6 +9,7 @@ import {
   applyFunding, applyExpand, applyTaxType, vatOnSale, vatOnPurchase,
   maybeForceGeneral, applyInvest, settleTax, declareDividend, TAX, TAX_PLANS,
   liabilityTotal, operatingRevenue, MOOD_LABEL, rollYearMood, moodFactor, evilAct, fmtW,
+  wageEfficiency, resolveStrike, evilTaxAdjust, evilTaxOwe,
   genOrder, fulfillOrder, trackChoice, decisionInsights, endOfMonthExtras,
   scoreMetrics, overallStars, MILESTONES, checkMilestones,
 } from '../lib/engine.js'
@@ -100,6 +101,8 @@ function Game() {
   const [reportReady, setReportReady] = useState(false)
   // E: 当月可选订单列表（持续经营章节主动接单）
   const [monthOrders, setMonthOrders] = useState([])
+  // 罢工弹窗：pendingStrike 有值时显示三选一
+  const [pendingStrike, setPendingStrike] = useState(null)
 
   const chapter = STORY[chapterIdx]
   const step = chapter?.steps[stepIdx]
@@ -165,9 +168,10 @@ function Game() {
     const eco = co.economics
     const scale = s.scale || 1
     const boost = 1 + (s.boost || 0)
+    const we = wageEfficiency(s) // 工资效率（拖欠工资→不满度→效率降）
     const mf = (a.type === 'sale') ? moodFactor(s) : 1 // 销售受本年行情影响
     if (a.type === 'sale' || a.type === 'purchase' || a.type === 'purchaseCredit') {
-      const base = eco.dealSize * scale * boost * mf
+      const base = eco.dealSize * scale * boost * mf * we
       const amount = diff.randFund ? +(base * (0.8 + Math.random() * 0.5)).toFixed(1) : +base.toFixed(1)
       const rate = s.taxType === 'general' ? TAX.VAT_GENERAL : TAX.VAT_SMALL
       return { type: a.type, amount, rate, vat: +(amount * rate).toFixed(2), cost: +(amount * (1 - eco.margin)).toFixed(1) }
@@ -187,7 +191,10 @@ function Game() {
     let expected = []
     let desc = ''
     const r = (a, b) => +(a + Math.random() * (b - a)).toFixed(1)
+    const we = wageEfficiency(s) // 工资效率影响实际可成交规模
     const amt = (base) => diff.randFund ? r(base * 0.8, base * 1.3) : +base.toFixed(1)
+    // 包装：把行情与工资效率乘进基准金额
+    const dealAmt = (rawBase) => amt(rawBase * moodFactor(s) * we)
 
     if (action.type === 'rent') {
       // 多付/少付：预付 months 个月房租，折扣 discount（多付折扣多、少付现金流压力小）
@@ -229,13 +236,13 @@ function Game() {
       })
       expected = entries
     } else if (action.type === 'purchase') {
-      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost * (1 + (s.eventBuff?.purchaseUp || 0)))
+      const a = overrideAmt != null ? overrideAmt : dealAmt(eco.dealSize * scale * boost * (1 + (s.eventBuff?.purchaseUp || 0)))
       const res = vatOnPurchase(s, a, false)
       desc = `进货¥${a}万${s.taxType === 'general' ? `（进项税¥${res.vat}万可抵扣）` : ''}`
       entries = res.entries; expected = res.entries
       s.balances['库存商品'] = (s.balances['库存商品'] || 0) + a
     } else if (action.type === 'purchaseCredit') {
-      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost * (1 + (s.eventBuff?.purchaseUp || 0)))
+      const a = overrideAmt != null ? overrideAmt : dealAmt(eco.dealSize * scale * boost * (1 + (s.eventBuff?.purchaseUp || 0)))
       const res = vatOnPurchase(s, a, true)
       desc = `赊购¥${a}万${s.taxType === 'general' ? `（进项税¥${res.vat}万可抵扣）` : ''}`
       entries = res.entries; expected = res.entries
@@ -244,7 +251,7 @@ function Game() {
       s.payablesDue = s.payablesDue || []
       s.payablesDue.push({ due: s.month + 3, amount: +(a + res.vat).toFixed(2) })
     } else if (action.type === 'sale') {
-      const a = overrideAmt != null ? overrideAmt : amt(eco.dealSize * scale * boost * moodFactor(s) * (1 + (s.eventBuff?.saleUp || 0)))
+      const a = overrideAmt != null ? overrideAmt : dealAmt(eco.dealSize * scale * boost * (1 + (s.eventBuff?.saleUp || 0)))
       const cost = +(a * (1 - eco.margin)).toFixed(1)
       const res = vatOnSale(s, a, co.revenueAccount)
       const forced = maybeForceGeneral(s)
@@ -321,19 +328,28 @@ function Game() {
       setToast(`投入决策（${a.kind}）：${a.level === 'high' ? '高投入→后续营收+25%，但前置营销成本已发生' : '低投入→营收小幅提升，无前置成本'}`)
       return { handled: true, selfContained: false }
     }
-    // 第七章邪道玩法：不发工资 / 不交税 / 虚开发票
+    // 第七章邪道玩法：不发工资 / 不交税（调账或拖欠）/ 虚开发票
     if (a.type === 'evilSalary') {
-      // 不发工资：当月不计提工资费用（省成本），但欠薪挂账，埋下劳动稽查风险
-      const eco = s.co.economics
-      const due = +(eco.salary * (s.scale || 1)).toFixed(1)
-      s.balances['应付职工薪酬'] = +(s.balances['应付职工薪酬'] || 0 + due).toFixed(2)
-      const msg = evilAct(s, 'salary')
+      // 不发工资：当月不计提工资费用（省成本），欠薪挂账，隐藏不满度上升，后续可能罢工
+      const msg = evilSalary(s)
       setToast(msg)
       return { handled: true, selfContained: false }
     }
-    if (a.type === 'evilTax') {
-      // 不交税：应交税费挂着不缴（state.skippedTaxMonths 累计），埋下税务稽查风险
-      const msg = evilAct(s, 'tax')
+    if (a.type === 'evilTaxAdjust') {
+      // 税务调账：修改应纳税额（产生分录），按调账次数定稽查概率
+      const msg = evilTaxAdjust(s, a.ratio)
+      setToast(msg)
+      return { handled: true, selfContained: false }
+    }
+    if (a.type === 'evilTaxOwe') {
+      // 直接拖欠税款：挂账不缴，每日万分之五滞纳金
+      const msg = evilTaxOwe(s)
+      setToast(msg)
+      return { handled: true, selfContained: false }
+    }
+    if (a.type === 'resolveStrike') {
+      // 罢工后三选一：full 全额 / partial 部分 / over 超额
+      const msg = resolveStrike(s, a.option)
       setToast(msg)
       return { handled: true, selfContained: false }
     }
@@ -459,6 +475,10 @@ function Game() {
     const settle = settleErrors(s)
     if (settle.fatal) { fail(s, s.failedReason); return }
     setSim(s)
+    // 罢工弹窗：本月触发罢工时，先弹窗让玩家三选一，再继续
+    if (s.pendingStrike) {
+      setPendingStrike({ month: s.month })
+    }
     let msg = `第${s.month}月结账：折旧+计息${settle.penalized ? `，罚款¥${settle.penalized}万` : ''}`
     if (extras.events && extras.events.length) {
       msg += '；' + extras.events.map((e) => `${e.title}¥${fmtW(e.amount)}万`).join('，')
@@ -732,6 +752,34 @@ function Game() {
   const entryActionTypes = ['rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary']
   const curAction = step?.options?.[0]?.action
   const isEntryAction = curAction && entryActionTypes.includes(curAction.type)
+
+  // 罢工弹窗：三选一（全额 / 部分 / 超额 补发）
+  if (pendingStrike) {
+    const owed = sim.wageUnpaid || 0
+    const d = Math.round(sim.wageDiscontent || 0)
+    const resolve = (option) => {
+      runSpecial({ type: 'resolveStrike', option })
+      setPendingStrike(null)
+    }
+    return (
+      <div className="page fade-in">
+        <Toast message={toast} onClose={() => setToast('')} />
+        <div className="card" style={{ borderLeft: '5px solid #e74c3c', background: '#FFF5F5', marginTop: 30 }}>
+          <div style={{ fontSize: 30 }}>🪧</div>
+          <div style={{ fontWeight: 800, color: '#e74c3c', marginTop: 4 }}>员工罢工了！</div>
+          <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7 }}>
+            因长期拖欠工资，员工发起罢工。当前累计欠薪 <b>¥{fmtW(owed)}万</b>，不满度 <b>{d}/100</b>。
+            罢工当月效率骤降。你决定如何回应？（无论哪种都会记入罢工黑历史，使下次更易罢工、损失更大）
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+            <button className="btn" onClick={() => resolve('full')}>💰 全额补发（结清欠薪，不满度清零）</button>
+            <button className="btn ghost" onClick={() => resolve('partial')}>⚠️ 部分补发 50%（欠薪减半，不满度下降但仍未平复）</button>
+            <button className="btn ghost" onClick={() => resolve('over')}>🔥 超额补发 150%（多花 50% 安抚金，彻底挽回人心）</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="page fade-in">
