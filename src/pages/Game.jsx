@@ -9,7 +9,7 @@ import {
   applyFunding, applyExpand, applyTaxType, vatOnSale, vatOnPurchase,
   maybeForceGeneral, applyInvest, settleTax, declareDividend, TAX, TAX_PLANS,
   liabilityTotal, operatingRevenue, MOOD_LABEL, rollYearMood, moodFactor, evilAct, fmtW,
-  wageEfficiency, resolveStrike, evilTaxAdjust, evilTaxOwe,
+  wageEfficiency, resolveStrike, evilSalary, evilTaxAdjust, evilTaxOwe,
   genOrder, fulfillOrder, trackChoice, decisionInsights, endOfMonthExtras,
   scoreMetrics, overallStars, MILESTONES, checkMilestones,
   analyzeDecision, financialSnapshot, complianceNow,
