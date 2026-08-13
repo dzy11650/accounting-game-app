@@ -652,6 +652,7 @@ export function taxAudit(state, month) {
     entries.push(...mk('所得税费用', back, '应交税费', back, `税务稽查：调账不实，补回税款¥${back}万`))
     entries.push(...mk('所得税费用', fine, '银行存款', fine, `税务稽查罚款¥${fine}万`))
     events.push(`调账被查：补回税款¥${back}万、罚款¥${fine}万`)
+    state.taxAdjustAmount = 0 // 已补回，累计虚减额清零
   }
   // 2) 直接拖欠的税款：补缴 + 滞纳金
   if ((state.taxOwed || 0) > 0) {
