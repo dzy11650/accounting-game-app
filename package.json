@@ -1,7 +1,7 @@
 {
   "name": "accounting-game-app",
   "private": true,
-  "version": "2.0.1",
+  "version": "2.0.2",
   "type": "module",
   "description": "面向零基础人员的会计入门教学App，融入游戏化元素",
   "main": "electron/main.js",

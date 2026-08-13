@@ -77,6 +77,8 @@ function Game() {
   const [phase, setPhase] = useState(() => (saved ? 'askLoad' : 'select')) // select | askLoad | play | ended
   const [coId, setCoId] = useState(null)
   const [diffId, setDiffId] = useState('easy')
+  // 选完公司类型、尚未选经营项目时的暂存公司
+  const [pendingCompany, setPendingCompany] = useState(null)
   const [sim, setSim] = useState(null)
   const [stepIdx, setStepIdx] = useState(0)
   const [chapterIdx, setChapterIdx] = useState(0)
@@ -123,14 +125,22 @@ function Game() {
   }
 
   // ---------- 开局 ----------
-  const start = (companyId, difficulty) => {
+  // 第一步：选公司类型 -> 进入"选经营项目"子步骤
+  const chooseCompany = (companyId) => {
+    const c = COMPANIES.find((x) => x.id === companyId)
+    setPendingCompany(c)
+  }
+  // 第二步：选经营项目 + 难度 -> 真正开局
+  const start = (companyId, difficulty, projectId = null) => {
     try {
       const c = COMPANIES.find((x) => x.id === companyId)
-      const s = createCompany(companyId, difficulty) // 空壳，资金由第一章出资决策注入
+      const proj = c.projects?.find((p) => p.id === projectId)
+      const s = createCompany(companyId, difficulty, projectId) // 空壳，资金由第一章出资决策注入
       setCoId(companyId); setDiffId(difficulty); setSim(s); setPhase('play')
       setStepIdx(0); setChapterIdx(0); setAdjustTasks([]); setReports(null); setShowHint(false)
-      setSaved(null); clearSave()
-      setToast(`创立${c.name}（${DIFFICULTY[difficulty].name}）— 先决定出资方式`)
+      setSaved(null); clearSave(); setPendingCompany(null)
+      const projLabel = proj ? ` · ${proj.emoji}${proj.name}` : ''
+      setToast(`创立${c.name}${projLabel}（${DIFFICULTY[difficulty].name}）— 先决定出资方式`)
       setLastEntries(s.ledger.slice(-3))
       persist(s, companyId, difficulty, 0, 0, false)
     } catch (e) {
@@ -592,21 +602,59 @@ function Game() {
   }
 
   if (phase === 'select') {
+    // 子步骤：已选公司类型，进入"选经营项目"
+    if (pendingCompany) {
+      const c = pendingCompany
+      const projects = c.projects || []
+      return (
+        <div className="page fade-in">
+          <Toast message={toast} onClose={() => setToast('')} />
+          <button className="btn ghost" style={{ marginBottom: 10 }} onClick={() => setPendingCompany(null)}>← 换家公司</button>
+          <div className="section-title">🏢 {c.emoji} {c.name} · 选经营项目</div>
+          <div style={{ color: 'var(--text-soft)', fontSize: 12, marginBottom: 8 }}>
+            同一类公司也分不同产品线，参数与难点略有差异，挑一个你熟悉的吧～
+          </div>
+          {projects.length === 0 ? (
+            <div className="card">该产品线暂未细分经营项目，直接选择难度开始。</div>
+          ) : projects.map((p) => (
+            <div key={p.id} className="card">
+              <div style={{ fontWeight: 800 }}>{p.emoji} {p.name}</div>
+              <div style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 4 }}>{p.blurb}</div>
+              {p.econ && (
+                <div className="flex" style={{ marginTop: 6 }}>
+                  {p.econ.margin != null && <span className="chip">毛利 {Math.round(p.econ.margin * 100)}%</span>}
+                  {p.econ.dealSize != null && <span className="chip">单笔 ¥{p.econ.dealSize}万</span>}
+                </div>
+              )}
+              <div className="section-title" style={{ margin: '12px 0 8px', fontSize: 14 }}>选择难度</div>
+              {Object.values(DIFFICULTY).map((d) => (
+                <button key={d.id} className="btn ghost mt12" style={{ width: '100%', padding: '10px' }} onClick={() => start(c.id, d.id, p.id)}>
+                  {d.name} · 容错{d.lives}次 {d.selfEntry ? '· 自写分录' : '· 选项引导'}
+                </button>
+              ))}
+            </div>
+          ))}
+          {projects.length > 0 && (
+            <button className="btn mt12" style={{ width: '100%' }} onClick={() => start(c.id, diffId, projects[0].id)}>
+              直接开干（默认 {projects[0].emoji}{projects[0].name} · {DIFFICULTY[diffId].name}）
+            </button>
+          )}
+        </div>
+      )
+    }
     return (
       <div className="page fade-in">
         <Toast message={toast} onClose={() => setToast('')} />
         <div className="section-title">🏢 选择公司类型</div>
         {COMPANIES.map((c) => (
-          <div key={c.id} className="card">
+          <div key={c.id} className="card" style={{ cursor: 'pointer' }} onClick={() => chooseCompany(c.id)}>
             <div style={{ fontWeight: 800 }}>{c.emoji} {c.name}</div>
             <div style={{ color: 'var(--text-soft)', fontSize: 12, marginTop: 4 }}>{c.blurb}</div>
-            <div className="flex" style={{ marginTop: 6 }}><span className="chip">难度 {'★'.repeat(c.difficulty)}</span><span className="chip">启动 ¥{c.initCash}万</span></div>
-            <div className="section-title" style={{ margin: '12px 0 8px', fontSize: 14 }}>选择难度</div>
-            {Object.values(DIFFICULTY).map((d) => (
-              <button key={d.id} className="btn ghost mt12" style={{ width: '100%', padding: '10px' }} onClick={() => start(c.id, d.id)}>
-                {d.name} · 容错{d.lives}次 {d.selfEntry ? '· 自写分录' : '· 选项引导'}
-              </button>
-            ))}
+            <div className="flex" style={{ marginTop: 6 }}>
+              <span className="chip">难度 {'★'.repeat(c.difficulty)}</span>
+              <span className="chip">启动 ¥{c.initCash}万</span>
+              {c.projects?.length > 0 && <span className="chip">{c.projects.length} 个经营项目</span>}
+            </div>
           </div>
         ))}
       </div>
@@ -698,7 +746,7 @@ function Game() {
 
       <div className="card">
         <div className="flex between center">
-          <div style={{ fontWeight: 800 }}>{co.emoji} {co.name}</div>
+          <div style={{ fontWeight: 800 }}>{co.emoji} {co.name}{sim.projectEmoji ? ` · ${sim.projectEmoji}${sim.projectName}` : ''}</div>
           <span className="chip">{diff.name}</span>
         </div>
         <div className="flex gap8 mt12">

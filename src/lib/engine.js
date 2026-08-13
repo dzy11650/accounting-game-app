@@ -66,8 +66,15 @@ export const TAX_PLANS = {
 }
 
 // ---------- 创建公司（空壳：资金/资产由后续剧情步骤注入） ----------
-export function createCompany(companyId, diffId = 'easy') {
-  const co = getCompany(companyId)
+// projectId：经营项目（细分产品线），可空，默认取该公司第一个项目
+export function createCompany(companyId, diffId = 'easy', projectId = null) {
+  const base = getCompany(companyId)
+  // 合并经营项目参数：项目可微调毛利率 / 单笔规模 / 房租等
+  const projects = base.projects || []
+  const proj = projects.find((p) => p.id === projectId) || projects[0] || null
+  const co = proj && proj.econ
+    ? { ...base, economics: { ...base.economics, ...proj.econ } }
+    : base
   const balances = INITIAL_BALANCES()
   const state = {
     companyId, co, month: 0, balances, ledger: [], loans: [],
@@ -75,6 +82,10 @@ export function createCompany(companyId, diffId = 'easy') {
     penalty: 0, history: [], failed: false, failedReason: '', scale: 1,
     taxType: 'small', cumSales: 0, vatOutput: 0, vatInput: 0,
     forcedGeneral: false, boost: 0, choices: {},
+    // 经营项目（细分产品线）
+    projectId: proj ? proj.id : null,
+    projectName: proj ? proj.name : null,
+    projectEmoji: proj ? proj.emoji : null,
     // 持续经营（第七章）新增字段
     year: 1,                       // 当前经营年份（1 起）
     yearMood: 'normal',            // 本年行情：good 丰年 / bad 歉年 / normal

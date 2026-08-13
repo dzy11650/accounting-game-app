@@ -34,6 +34,12 @@ export const COMPANIES = [
     revenueAccount: '主营业务收入',
     // 成本科目（利润表用）
     costAccount: '主营业务成本',
+    // 经营项目：同一品类下可细分不同产品线，参数略有差异
+    projects: [
+      { id: 'milktea', name: '经典奶茶', emoji: '🧋', blurb: '走量快、毛利高、单价低，最适合练手。', econ: { margin: 0.45, dealSize: 2 } },
+      { id: 'bake', name: '烘焙甜品', emoji: '🍰', blurb: '客单价更高、损耗大，对库存周转要求高。', econ: { margin: 0.5, dealSize: 1.5, rent: 0.35 } },
+      { id: 'fruittea', name: '鲜果茶', emoji: '🍓', blurb: '原材料鲜度要求高，损耗与采购节奏更难把控。', econ: { margin: 0.42, dealSize: 2, salary: 0.6 } },
+    ],
   },
   {
     id: 'tech',
@@ -56,6 +62,12 @@ export const COMPANIES = [
     ]),
     revenueAccount: '主营业务收入-订阅',
     costAccount: '主营业务成本',
+    // 经营项目
+    projects: [
+      { id: 'saas', name: 'SaaS 订阅', emoji: '💻', blurb: '高复购、近乎零边际成本，毛利天花板最高。', econ: { margin: 0.7, dealSize: 3 } },
+      { id: 'game', name: '游戏发行', emoji: '🎮', blurb: '爆款波动大、流水高但分成与买量成本高。', econ: { margin: 0.55, dealSize: 4, salary: 1.8 } },
+      { id: 'ai', name: 'AI 工具', emoji: '🤖', blurb: '前沿赛道，研发与算力（服务器）投入重。', econ: { margin: 0.6, dealSize: 3, rent: 1.0 } },
+    ],
     // 专属：研发资本化 -> 无形资产
     capitalizeRnd: (amt) => ([
       { side: 'debit', account: '无形资产-软件', amount: amt },
@@ -92,6 +104,12 @@ export const COMPANIES = [
     ]),
     revenueAccount: '主营业务收入-产成品',
     costAccount: '主营业务成本',
+    // 经营项目
+    projects: [
+      { id: 'auto', name: '汽车配件', emoji: '🚗', blurb: '订单大、账期长，应收应付与存货管理是难点。', econ: { margin: 0.22, dealSize: 7 } },
+      { id: 'cloth', name: '服装制造', emoji: '👕', blurb: '季节性强、库存跌价风险高，对周转要求极高。', econ: { margin: 0.3, dealSize: 5 } },
+      { id: 'food', name: '食品加工', emoji: '🍞', blurb: '原料涨跌频繁、保质期短，损耗与采购节奏难。', econ: { margin: 0.2, dealSize: 6, rent: 1.7 } },
+    ],
   },
   {
     id: 'trade',
@@ -117,6 +135,12 @@ export const COMPANIES = [
     ]),
     revenueAccount: '主营业务收入',
     costAccount: '主营业务成本',
+    // 经营项目
+    projects: [
+      { id: 'elec', name: '电子数码', emoji: '📱', blurb: '单价高、更新快、贬值猛，库存管理是命门。', econ: { margin: 0.28, dealSize: 5 } },
+      { id: 'energy', name: '能源化工', emoji: '🛢️', blurb: '大宗波动大、常赊销赊购，汇兑与价格风险突出。', econ: { margin: 0.22, dealSize: 8, rent: 0.8 } },
+      { id: 'grain', name: '农副产品', emoji: '🌾', blurb: '季节与气候影响大，收购资金密集、账期长。', econ: { margin: 0.25, dealSize: 6, salary: 1.2 } },
+    ],
   },
   {
     id: 'listed',
@@ -139,6 +163,12 @@ export const COMPANIES = [
     ]),
     revenueAccount: '主营业务收入',
     costAccount: '主营业务成本',
+    // 经营项目
+    projects: [
+      { id: 'finance', name: '金融控股', emoji: '🏦', blurb: '资本运作频繁、表外业务多，合并报表最复杂。', econ: { margin: 0.32, dealSize: 14 } },
+      { id: 'infra', name: '基建地产', emoji: '🏗️', blurb: '重资产、长周期、借款与预收房款勾稽关系密。', econ: { margin: 0.26, dealSize: 16, rent: 4.5 } },
+      { id: 'retail', name: '连锁零售', emoji: '🛍️', blurb: '门店多、流水碎、存货与现金管理网点分散。', econ: { margin: 0.28, dealSize: 12, salary: 9 } },
+    ],
     // 上市专属：发行股票
     issueStock: (amt) => ([
       { side: 'debit', account: '银行存款', amount: amt },
