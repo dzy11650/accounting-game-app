@@ -101,13 +101,11 @@ cd android
 | 平台 | 文件 | 大小 | 说明 |
 | --- | --- | --- | --- |
 | 🤖 安卓 | [app-release.apk](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/app-release.apk) | 3.2 MB | 已签名，可直接安装到安卓手机 |
-| 🪟 Windows（Electron 便携版） | [kjxdj-electron-2.0.4-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/kjxdj-electron-2.0.4-portable.exe) | 78 MB | 双击即用，免安装 |
-| 🪟 Windows（Electron 便携版·修复1） | [kjxdj-electron-2.0.4-portable-fix1-202608130629.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/kjxdj-electron-2.0.4-portable-fix1-202608130629.exe) | 81 MB | 含「非科技公司税务选项卡死」bug 修复 |
-| 🪟 Windows（Electron 便携版·修复2） | [kjxdj-electron-2.0.4-portable-fix2-202608130634.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/kjxdj-electron-2.0.4-portable-fix2-202608130634.exe) | 81 MB | 含「邪道·不发工资 evilSalary is not defined」崩溃修复，建议新下载用户用此版 |
-| 🪟 Windows（Tauri 便携版·修复2） | [会计小当家-fix2-202608130646.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6-fix2-202608130646.exe) | 4 MB | Tauri 版（含 evilSalary 崩溃修复），双击即用 |
-| 🪟 Windows（Tauri 安装版·修复2） | [会计小当家_2.0.4_x64-setup-fix2-202608130646.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6_2.0.4_x64-setup-fix2-202608130646.exe) | 1 MB | Tauri 版安装包（含 evilSalary 崩溃修复） |
-| 🪟 Windows（Tauri 安装版） | [会计小当家_2.0.4_x64-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6_2.0.4_x64-setup.exe) | 1.2 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
+| 🪟 Windows（Electron 便携版） | [kjxdj-electron-2.0.4-portable.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/kjxdj-electron-2.0.4-portable.exe) | 81 MB | 双击即用，免安装 |
 | 🪟 Windows（Tauri 便携版） | [会计小当家.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6.exe) | 4.3 MB | 体积更小、启动更快，双击即用 |
+| 🪟 Windows（Tauri 安装版） | [会计小当家_2.0.4_x64-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6_2.0.4_x64-setup.exe) | 1.3 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
+
+> 上述安装包均已包含 v2.0.4 全部 bug 修复（非科技公司税务卡死、邪道·不发工资 `evilSalary` 崩溃等），直接下载即为最新正确版本，无需再区分「修复版」。
 
 > 所有安装包发布于 Release **[v2.0.4](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v2.0.4)**。
 > Tauri 安装版 / 便携版使用中文文件名，下载时若浏览器提示请正常保存，安装后在开始菜单 / 桌面快捷方式启动。
@@ -121,6 +119,10 @@ cd android
 - 🐛 修复：利润表 / 资产负债表亏损金额负号被吞（负数正确显示并标红）。
 - 🐛 修复：利润表月中 / 月末数据失真（损益累计改为实时追踪，不再依赖月末清零）。
 - 🐛 修复：选择「邪道·不发工资」(`evilSalary`) 时 `ReferenceError: evilSalary is not defined` 崩溃（漏导入，已补 `import { evilSalary }`）。Electron 与 Tauri 两版均已重建并上传修复版（fix2）。
+- 🐛 修复：赊购账期（应付账款）未入账导致偿还时现金被错误扣减的问题。
+- 🐛 修复：报税后企业所得税未结转至本年利润导致报表不平的问题。
+- 🐛 修复：`trackChoice` 未返回新 state 导致部分交互状态不刷新。
+- 🐛 修复：非科技公司（如联塑零售、奶茶店）点击「依法纳税 + 用足合法优惠（正道·合理避税）」推荐项时，因带「研发加计扣除」被误拦截、无法进入下一步的卡死问题（现改为自动剔除不适用项并继续缴税推进）。
 
 ### v2.0.3 更新内容
 - 🃏 **邪道玩法 2.0**：工资不满度系统升级为「罢工三选一」分支，玩家需在补偿、谈判、硬扛之间权衡，后果实时反映在现金流与员工士气上。
@@ -134,10 +136,6 @@ cd android
 - 🐛 **修复 Tauri 桌面启动运行时 `moodFactor is not defined` 报错**：旧 v2.0.0 Tauri 包内含陈旧 dist 资源导致选择业务时崩溃，已重新构建并上传 2.0.1。
 - 🐛 **修复选择邪道玩法「欠薪」时 `eco is not defined` 报错**：`evilSalary` 分支漏声明 `eco` 变量，导致第七章不发工资选项点击崩溃，已补 `const eco = s.co.economics`。
 - 🐛 修复：赊购账期（应付账款）未入账导致偿还时现金被错误扣减的问题。
-- 🐛 修复：报税后企业所得税未结转至本年利润导致报表不平的问题。
-- 🐛 修复：`trackChoice` 未返回新 state 导致部分交互状态不刷新。
-- 🐛 修复：非科技公司（如联塑零售、奶茶店）点击「依法纳税 + 用足合法优惠（正道·合理避税）」推荐项时，因带「研发加计扣除」被误拦截、无法进入下一步的卡死问题（现改为自动剔除不适用项并继续缴税推进）。
-- 🧹 清理：删除 v2.0.0 release 中的重复/损坏产物，统一下载入口。
 
 ### v2.0.0 更新内容（游戏性大升级）
 - 📥 **主动接单系统**：持续经营章节改为「接订单」模式，每月出现多张订单（金额/毛利率/账期不同），玩家可挑着接、可赊销，把被动经营变主动决策。
