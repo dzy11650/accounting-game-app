@@ -104,6 +104,8 @@ function Game() {
   const [monthOrders, setMonthOrders] = useState([])
   // 罢工弹窗：pendingStrike 有值时显示三选一
   const [pendingStrike, setPendingStrike] = useState(null)
+  // 小规模纳税人 → 一般纳税人（可抵扣进项）申请确认弹窗
+  const [showGeneralConfirm, setShowGeneralConfirm] = useState(false)
   // 每个分支选择后的财务分析与诊断
   const [analysis, setAnalysis] = useState(null)
 
@@ -190,6 +192,8 @@ function Game() {
     const eco = co.economics
     const scale = s.scale || 1
     const boost = 1 + (s.boost || 0)
+    const costMult = (s.diffEcon && s.diffEcon.costMult) || 1
+    const marginMult = (s.diffEcon && s.diffEcon.marginMult) || 1
     let entries = []
     let expected = []
     let desc = ''
@@ -211,7 +215,7 @@ function Game() {
       }
       const months = action.months || 1
       const discount = action.discount || 0
-      const grossMonthly = eco.rent * scale
+      const grossMonthly = eco.rent * scale * costMult
       const monthlyRent = +(grossMonthly * (1 - discount)).toFixed(1) // 折扣后月租
       const deposit = +grossMonthly.toFixed(1) // 押金按原价（1个月房租）
       const prepaid = +(monthlyRent * months).toFixed(1) // 预付房租（含折扣）
@@ -255,7 +259,7 @@ function Game() {
       s.payablesDue.push({ due: s.month + 3, amount: +(a + res.vat).toFixed(2) })
     } else if (action.type === 'sale') {
       const a = overrideAmt != null ? overrideAmt : dealAmt(eco.dealSize * scale * boost * (1 + (s.eventBuff?.saleUp || 0)))
-      const cost = +(a * (1 - eco.margin)).toFixed(1)
+      const cost = +(a * (1 - eco.margin * marginMult)).toFixed(1)
       const res = vatOnSale(s, a, co.revenueAccount)
       const forced = maybeForceGeneral(s)
       const costE = co.costOfSale(cost)
@@ -268,7 +272,7 @@ function Game() {
       if (forced) setToast('⚠️ 年销售额超500万，已强制转为一般纳税人！税率13%且可抵扣进项')
       return { entries, expected, desc, s }
     } else if (action.type === 'salary') {
-      const a = +(eco.salary * scale).toFixed(1)
+      const a = +(eco.salary * scale * costMult).toFixed(1)
       desc = `计提工资¥${a}万`
       entries = [{ side: 'debit', account: '管理费用-工资', amount: a }, { side: 'credit', account: '应付职工薪酬', amount: a }]
       expected = entries
@@ -400,6 +404,59 @@ function Game() {
       return { handled: true, selfContained: true }
     }
     return { handled: false }
+  }
+
+  // 第七章"卖货收款"：可重复多次，直到玩家点"完成本月销售"才进入下一步
+  const doSaleOnce = () => {
+    try {
+      const before = clone(sim)
+      const s = clone(sim)
+      const a = { type: 'sale', boost: 1 }
+      const { entries, expected, desc } = doBusiness(s, a)
+      recordVoucher(s, { desc, actual: expected, expected, month: s.month })
+      s.salesThisMonth = (s.salesThisMonth || 0) + 1
+      s.choices = s.choices || {}
+      s.choices.sales = (s.choices.sales || 0) + 1
+      setSim(s); setLastEntries(entries); setToast(`${desc} ✓（本月已做 ${s.salesThisMonth} 笔销售）`)
+      setAnalysis(analyzeDecision(before, s, a, { title: `第 ${s.salesThisMonth} 笔销售` }))
+      persist(s, coId, diffId, chapterIdx, stepIdx, false)
+    } catch (e) {
+      console.error('[doSaleOnce 出错]', e)
+      setRuntimeError(`销售出错：${e && e.message}\n${e && e.stack}`)
+    }
+  }
+
+  // 完成本月销售，进入下一步（工资/结转等）
+  const finishSaleMonth = () => {
+    const s = clone(sim)
+    if ((s.salesThisMonth || 0) === 0) {
+      setToast('⚠️ 本月一笔销售都没做，至少做一笔再继续吧')
+      return
+    }
+    s.salesThisMonth = 0
+    setSim(s)
+    nextStep()
+  }
+
+  // 小规模纳税人申请转为一般纳税人（可抵扣进项）
+  const requestGeneral = () => {
+    try {
+      const before = clone(sim)
+      const s = clone(sim)
+      applyTaxType(s, 'general') // engine：切换税率13% + 标记可抵扣
+      s.choices = s.choices || {}
+      s.choices.taxType = 'general'
+      s.usedTaxPlans = s.usedTaxPlans || []
+      if (!s.usedTaxPlans.includes('generalSwitch')) s.usedTaxPlans.push('generalSwitch')
+      setSim(s)
+      persist(s, coId, diffId, chapterIdx, stepIdx, false)
+      setShowGeneralConfirm(false)
+      setToast('✓ 已转为一般纳税人：增值税率13%，今后进货的进项税可抵扣销项税')
+      setAnalysis(analyzeDecision(before, s, { type: 'taxType', label: '转为一般纳税人' }, { title: '税务身份变更' }))
+    } catch (e) {
+      console.error('[requestGeneral 出错]', e)
+      setRuntimeError(`转一般纳税人出错：${e && e.message}\n${e && e.stack}`)
+    }
   }
 
   // ---------- 简单模式：选选项 ----------
@@ -541,10 +598,13 @@ function Game() {
       const s = clone(sim)
       fulfillOrder(s, order)
       s.monthOrders = (s.monthOrders || []).filter((o) => o.id !== order.id)
+      s.salesThisMonth = (s.salesThisMonth || 0) + 1
+      s.choices = s.choices || {}
+      s.choices.sales = (s.choices.sales || 0) + 1
       setMonthOrders(s.monthOrders)
       setSim(s)
       persist(s, coId, diffId, chapterIdx, stepIdx, false)
-      setToast(`✓ 已接「${order.customer}」订单：销售额¥${fmtW(order.amount)}万，预计毛利¥${fmtW(order.profit)}万${order.credit > 0 ? `（赊销${order.credit}月后回款）` : '（现结）'}`)
+      setToast(`✓ 已接「${order.customer}」订单（本月第 ${s.salesThisMonth} 笔销售）：销售额¥${fmtW(order.amount)}万，预计毛利¥${fmtW(order.profit)}万${order.credit > 0 ? `（赊销${order.credit}月后回款）` : '（现结）'}`)
     } catch (e) {
       console.error('[acceptOrder 出错]', e)
       setRuntimeError(`接单出错：${e && e.message}\n${e && e.stack}`)
@@ -807,6 +867,33 @@ function Game() {
     )
   }
 
+  // 一般纳税人（可抵扣进项）申请确认弹窗
+  if (showGeneralConfirm) {
+    return (
+      <div className="page fade-in">
+        <Toast message={toast} onClose={() => setToast('')} />
+        <div className="card" style={{ borderLeft: '5px solid var(--accent-deep)', background: '#E9F8F6', marginTop: 30 }}>
+          <div style={{ fontSize: 30 }}>🔁</div>
+          <div style={{ fontWeight: 800, color: 'var(--accent-deep)', marginTop: 4 }}>转为一般纳税人？</div>
+          <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.8 }}>
+            转换后你将：
+            <div style={{ fontSize: 12, color: 'var(--text-soft)', marginTop: 6 }}>
+              • 增值税率从 3%（小规模征收率）变为 <b>13%</b><br />
+              • 之后<b>进货/采购的进项税额可抵扣销项税额</b>——进项越多越省税<br />
+              • 需按月规范记账、能开专票（对大客户更有利）<br />
+              • 一旦转为一般纳税人，<b>通常不能再转回小规模</b>
+            </div>
+            若你近期采购（进项）较多、或想给大客户开专票，转一般人才划算；否则继续小规模更省心。
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+            <button className="btn" style={{ background: 'var(--accent-deep)', color: '#fff' }} onClick={requestGeneral}>✅ 确认转为一般纳税人（可抵扣进项）</button>
+            <button className="btn ghost" onClick={() => setShowGeneralConfirm(false)}>❌ 暂不转换，保持小规模纳税人</button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="page fade-in">
       {runtimeError && (
@@ -897,38 +984,63 @@ function Game() {
         )}
       </div>
 
-      {/* E: 持续经营"销售"步——主动接单面板（替换被动卖货） */}
+      {/* E: 持续经营"销售"步——主动接单面板 + 可重复卖货（替换"点一次就跳下一步"） */}
       {!selfMode && chapter.id === 'continuing' && step?.options?.[0]?.action?.type === 'sale' && (
         <div className="card">
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>📥 本月订单（点击接单，把生意主动权握在手里）</div>
-          <div style={{ fontSize: 12, color: 'var(--text-soft)', marginBottom: 10 }}>
-            下方订单可全接也可挑着接。赊销订单会挂「应收账款」，数月后自动回款；不接单也可直接点"卖货收款"按默认成交一笔。
-          </div>
-          {monthOrders.length === 0 ? (
-            <div style={{ fontSize: 13, color: 'var(--text-soft)', padding: '8px 0' }}>本月订单都已接完，或本月无新订单。</div>
-          ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {monthOrders.map((o) => (
-                <div key={o.id} style={{ border: '1.5px solid var(--line)', borderRadius: 12, padding: '10px 12px', background: o.credit > 0 ? '#FFF8F0' : '#F4FBF9' }}>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>{o.emoji || '🧾'} {o.customer}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text-soft)', margin: '4px 0' }}>
-                    销售额 ¥{fmtW(o.amount)}万 · 毛利率 {Math.round(o.margin * 100)}% · 预计毛利 ¥{fmtW(o.profit)}万
-                  </div>
-                  <div style={{ fontSize: 11, marginBottom: 6 }}>
-                    {o.credit > 0
-                      ? <span style={{ color: 'var(--accent-deep)', background: '#E9F8F6', padding: '2px 8px', borderRadius: 6 }}>赊销 {o.credit} 月后回款</span>
-                      : <span style={{ color: '#1a8f6a', background: '#E3F6EF', padding: '2px 8px', borderRadius: 6 }}>现结</span>}
-                  </div>
-                  <button className="btn-sm" onClick={() => acceptOrder(o)} style={{ width: '100%' }}>接单并记账</button>
-                </div>
-              ))}
+          {/* 小规模纳税人 → 一般纳税人（可抵扣进项）主动选择入口 */}
+          {sim.taxType === 'small' && (
+            <div style={{ border: '1.5px dashed var(--accent-deep)', borderRadius: 12, padding: '10px 12px', background: '#E9F8F6', marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>🧾 增值税身份：当前为「小规模纳税人」</div>
+              <div style={{ fontSize: 12, color: 'var(--text-soft)', margin: '6px 0', lineHeight: 1.7 }}>
+                小规模纳税人按 3% 征收率计税、<b>不能抵扣进项税</b>；而一般纳税人按 13% 计税，但<b>进货的进项税额可以抵扣销项税额</b>，当你的进项（采购）较多时反而更省税。是否申请转为一般纳税人？
+              </div>
+              <button className="btn" style={{ width: '100%', background: 'var(--accent-deep)', color: '#fff' }} onClick={() => setShowGeneralConfirm(true)}>🔁 申请转为一般纳税人（可抵扣进项）</button>
             </div>
           )}
+          {sim.taxType === 'general' && (
+            <div style={{ fontSize: 12, color: 'var(--text-soft)', marginBottom: 8, background: '#E3F6EF', padding: '8px 10px', borderRadius: 8 }}>
+              ✅ 当前为「一般纳税人」，增值税率 13%，进货进项税可抵扣销项税。
+            </div>
+          )}
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>📥 本月销售（可多次成交，做完再"完成本月销售"）</div>
+          <div style={{ fontSize: 12, color: 'var(--text-soft)', marginBottom: 8 }}>
+            本月已做 <b>{sim.salesThisMonth || 0}</b> 笔销售。可反复点"卖货收款"多做几笔，或挑订单接单；赊销订单挂「应收账款」数月后回款。觉得够了就点"完成本月销售"进入下一步。
+          </div>
+
+          {/* 本月可接订单 */}
+          {monthOrders.length > 0 && (
+            <>
+              <div style={{ fontWeight: 600, fontSize: 13, margin: '6px 0' }}>📋 可选订单（点击接单）</div>
+              <div style={{ display: 'grid', gap: 10, marginBottom: 10 }}>
+                {monthOrders.map((o) => (
+                  <div key={o.id} style={{ border: '1.5px solid var(--line)', borderRadius: 12, padding: '10px 12px', background: o.credit > 0 ? '#FFF8F0' : '#F4FBF9' }}>
+                    <div style={{ fontWeight: 700, fontSize: 13 }}>{o.emoji || '🧾'} {o.customer}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-soft)', margin: '4px 0' }}>
+                      销售额 ¥{fmtW(o.amount)}万 · 毛利率 {Math.round(o.margin * 100)}% · 预计毛利 ¥{fmtW(o.profit)}万
+                    </div>
+                    <div style={{ fontSize: 11, marginBottom: 6 }}>
+                      {o.credit > 0
+                        ? <span style={{ color: 'var(--accent-deep)', background: '#E9F8F6', padding: '2px 8px', borderRadius: 6 }}>赊销 {o.credit} 月后回款</span>
+                        : <span style={{ color: '#1a8f6a', background: '#E3F6EF', padding: '2px 8px', borderRadius: 6 }}>现结</span>}
+                    </div>
+                    <button className="btn-sm" onClick={() => acceptOrder(o)} style={{ width: '100%' }}>接单并记账</button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* 主动卖货（可重复）+ 完成 */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+            <button className="btn" style={{ flex: 1, minWidth: 140 }} onClick={doSaleOnce}>🛒 卖货收款（再做一笔）</button>
+            <button className="btn" style={{ flex: 1, minWidth: 140, background: 'var(--gold)', color: '#fff' }} onClick={finishSaleMonth}>✅ 完成本月销售（{sim.salesThisMonth || 0}笔）</button>
+          </div>
+          <button className="btn ghost mt12" style={{ width: '100%', fontSize: 12 }} onClick={() => { setSim(s => { s.salesThisMonth = 0; return s }); nextStep() }}>🚫 本月不卖，空手进入下一步</button>
         </div>
       )}
 
-      {/* 简单模式：选项卡片 */}
-      {!selfMode && (
+      {/* 简单模式：选项卡片（第七章"销售"步已在上方面板单独渲染，这里跳过） */}
+      {!selfMode && !(chapter.id === 'continuing' && step?.options?.[0]?.action?.type === 'sale') && (
         <div className="card">
           {step?.options?.length ? (
             step.options.map((opt, i) => (

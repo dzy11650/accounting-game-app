@@ -50,11 +50,15 @@ function pnlCat(account) {
 // ---------- 难度配置 ----------
 export const DIFFICULTY = {
   easy: { id: 'easy', name: '简单模式', lives: 3, autoFix: true, randFund: false, selfEntry: false,
-    hint: '系统给出分录，错了自动修正，容错 3 次' },
+    hint: '系统给出分录，错了自动修正，容错 3 次',
+    // 经济难度系数：固定费用打折、毛利不缩、随机事件温和 → 利润好看
+    econ: { costMult: 0.65, marginMult: 1.0, eventMult: 0.6 } },
   hard: { id: 'hard', name: '困难模式', lives: 1, autoFix: false, randFund: true, selfEntry: true,
-    hint: '自己写分录，金额随机，错 1 次扣容错，必须做调整分录' },
+    hint: '自己写分录，金额随机，错 1 次扣容错，必须做调整分录',
+    econ: { costMult: 1.0, marginMult: 0.9, eventMult: 1.0 } },
   hardcore: { id: 'hardcore', name: '硬核模式', lives: 0, autoFix: false, randFund: true, selfEntry: true,
-    hint: '错 1 次即失败，学不到最终关' },
+    hint: '错 1 次即失败，学不到最终关',
+    econ: { costMult: 1.25, marginMult: 0.82, eventMult: 1.3 } },
 }
 
 // ---------- 税务规则 ----------
@@ -91,6 +95,7 @@ export function createCompany(companyId, diffId = 'easy', projectId = null) {
   const state = {
     companyId, co, month: 0, balances, ledger: [], loans: [],
     vouchers: [], errors: [], lives: DIFFICULTY[diffId].lives, difficulty: diffId,
+    diffEcon: DIFFICULTY[diffId].econ || { costMult: 1, marginMult: 1, eventMult: 1 },
     penalty: 0, history: [], failed: false, failedReason: '', scale: 1,
     taxType: 'small', cumSales: 0, vatOutput: 0, vatInput: 0,
     forcedGeneral: false, boost: 0, choices: {},
@@ -347,15 +352,19 @@ export function monthEnd(state, opts = {}) {
   state.month = m
   const newEntries = []
 
-  co.fixedAssets.forEach((fa) => newEntries.push(...mk('管理费用-折旧', fa.monthlyDep, '累计折旧', fa.monthlyDep, `计提${fa.name}折旧`)))
+  const costMult = (state.diffEcon && state.diffEcon.costMult) || 1
+  co.fixedAssets.forEach((fa) => {
+    const dep = +(fa.monthlyDep * costMult).toFixed(2)
+    newEntries.push(...mk('管理费用-折旧', dep, '累计折旧', dep, `计提${fa.name}折旧`))
+  })
   state.loans.forEach((loan) => {
-    const interest = +(loan.principal * loan.rate).toFixed(2)
+    const interest = +(loan.principal * loan.rate * costMult).toFixed(2)
     if (m >= loan.since) newEntries.push(...mk('财务费用-利息', interest, '应付利息', interest, `计提借款利息(月${m})`))
   })
   // 预付房租摊销：多付房租时一次性挂"预付账款-房租"，这里按月摊销进费用（权责发生制）
   const prepRent = state.choices?.rentMonths
   if (prepRent && prepRent > 0 && (state.balances['预付账款-房租'] || 0) > 0) {
-    const grossMonthly = co.economics.rent * (state.scale || 1)
+    const grossMonthly = co.economics.rent * (state.scale || 1) * costMult
     const discount = state.choices.rentDiscount || 0
     const monthlyRent = +(grossMonthly * (1 - discount)).toFixed(2)
     const remain = state.balances['预付账款-房租']
@@ -816,7 +825,8 @@ export function genOrder(state, rng = Math.random) {
   // 工资效率（不满度/罢工）直接压低可承接的生意规模，影响营收与成本
   const we = wageEfficiency(state)
   const amount = +(base * sizeRoll * moodFactor(state) * we).toFixed(2)
-  const margin = +(co.economics.margin * (0.7 + rng() * 0.6)).toFixed(2) // 毛利率波动
+  const marginMult = (state.diffEcon && state.diffEcon.marginMult) || 1
+  const margin = +(co.economics.margin * marginMult * (0.7 + rng() * 0.6)).toFixed(2) // 毛利率波动（受难度系数影响）
   const creditRoll = rng()
   const credit = creditRoll < 0.45 ? 0 : creditRoll < 0.8 ? (rng() < 0.5 ? 1 : 2) : 3
   const customers = ['便利店', '写字楼团购', '直播达人', '老客户返单', '政府定点', '连锁商超']
@@ -895,8 +905,14 @@ export function collectReceivables(state) {
 // ---- C. 随机事件：打破第七章的重复枯燥 ----
 // 事件只影响当月 economics（成本/营收系数/费用），不直接破坏会计恒等式
 export function rollRandomEvent(state, rng = Math.random) {
-  // 每 3 个月左右触发一次，避免过密
+  // 每 3 个月左右触发一次，避免过密；难度越高（eventMult 越大）触发越频繁
   if (state.month % 3 !== 0) { return null }
+  const eventMult = (state.diffEcon && state.diffEcon.eventMult) || 1
+  // eventMult<1（简单模式）按概率跳过，让新手更平稳；eventMult>=1 正常触发
+  if (eventMult < 1 && rng() > eventMult) {
+    state.eventBuff = {}
+    return null
+  }
   // 进入新月前，清空上一个月的临时事件增益（避免永久叠加）
   state.eventBuff = {}
   const library = RANDOM_EVENTS
