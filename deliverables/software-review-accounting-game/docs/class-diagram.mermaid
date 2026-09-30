@@ -1,0 +1,161 @@
+# 类图 - Class Diagram
+
+```mermaid
+classDiagram
+    class Company {
+        +id: string
+        +name: string
+        +emoji: string
+        +difficulty: number
+        +initCash: number
+        +economics: Object
+        +fixedAssets: Array
+        +projects: Array
+        +purchase: Function
+        +costOfSale: Function
+        +revenueAccount: string
+        +costAccount: string
+        +capitalizeRnd: Function
+        +amortize: Function
+        +issueStock: Function
+    }
+
+    class State {
+        +companyId: string
+        +co: Company
+        +month: number
+        +balances: Object
+        +ledger: Array
+        +loans: Array
+        +vouchers: Array
+        +errors: Array
+        +lives: number
+        +difficulty: string
+        +diffEcon: Object
+        +penalty: number
+        +year: number
+        +yearMood: string
+        +evilCount: number
+        +evilEvents: Array
+        +wageDiscontent: number
+        +wageStrikes: number
+        +pendingStrike: Object
+        +taxOwed: number
+        +taxLateFee: number
+        +taxAdjusts: number
+        +taxAdjustAmount: number
+        +auditHits: number
+        +totalDividend: number
+        +cum: Object
+        +receivables: Array
+        +payablesDue: Array
+        +reachedMilestones: Array
+        +choiceLog: Array
+        +eventBuff: Object
+        +monthOrders: Array
+        +scale: number
+        +taxType: string
+        +cumSales: number
+        +vatOutput: number
+        +vatInput: number
+        +forcedGeneral: boolean
+        +boost: number
+        +choices: Object
+    }
+
+    class INITIAL_BALANCES {
+        +银行存款: number
+        +库存现金: number
+        +应收账款: number
+        +应付账款: number
+        +原材料: number
+        +库存商品: number
+        +生产成本: number
+        +固定资产: number
+        +累计折旧: number
+        +累计摊销: number
+        +无形资产: number
+        +研发支出: number
+        +预付账款: number
+        +短期借款: number
+        +应付职工薪酬: number
+        +应付利息: number
+        +应交税费: number
+        +实收资本: number
+        +股本: number
+        +本年利润: number
+        +主营业务收入: number
+        +主营业务成本: number
+        +管理费用: number
+        +财务费用: number
+        +研发费用: number
+        +所得税费用: number
+    }
+
+    class Engine {
+        +createCompany: Function
+        +applyFunding: Function
+        +applyExpand: Function
+        +applyTaxType: Function
+        +vatOnSale: Function
+        +vatOnPurchase: Function
+        +maybeForceGeneral: Function
+        +applyInvest: Function
+        +settleTax: Function
+        +declareDividend: Function
+        +applyBusiness: Function
+        +recordVoucher: Function
+        +gradeEntries: Function
+        +monthEnd: Function
+        +settleErrors: Function
+        +applyAdjust: Function
+        +loseLife: Function
+        +totalAssets: Function
+        +sumAccount: Function
+        +isBankrupt: Function
+        +buildReports: Function
+        +rollYearMood: Function
+        +rollRandomEvent: Function
+        +checkMilestones: Function
+        +trackChoice: Function
+        +decisionInsights: Function
+        +scoreMetrics: Function
+        +overallStars: Function
+        +endOfMonthExtras: Function
+        +complianceNow: Function
+        +financialSnapshot: Function
+        +analyzeDecision: Function
+        +DIFFICULTY: Object
+        +TAX: Object
+        +TAX_PLANS: Object
+    }
+
+    class UserContext {
+        +defaultState: Object
+        +reducer: Function
+        +UserProvider: Function
+        +useUser: Function
+    }
+
+    class GamePage {
+        +useState: Function
+        +clone: Function
+        +runSpecial: Function
+        +doBusiness: Function
+        +doMonthEnd: Function
+        +acceptOrder: Function
+        +finish: Function
+        +render: Function
+    }
+
+    Company --> INITIAL_BALANCES
+    State "1".."1" State
+    State --> Engine
+    State --> UserContext
+    GamePage --> State
+    GamePage --> Engine
+    GamePage --> UserContext
+    UserContext --> State
+    Engine --> INITIAL_BALANCES
+    Engine --> Company
+```

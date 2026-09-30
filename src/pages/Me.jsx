@@ -16,10 +16,10 @@ const RANK_BASE = [
   { name: '小数点猎人', score: 980, avatar: '🐰' },
   { name: '借贷平衡侠', score: 760, avatar: '🦊' },
 ]
-// 公司类型中文名（用于 G 多公司对比）
+// 公司类型中文名（与 data/companies.js 的 id 保持一致）
 const CO_NAMES = {
-  restaurant: '🍜 餐饮店', shop: '🛍️ 零售店', supermarket: '🏪 超市',
-  factory: '🏭 工厂', tech: '💡 科技工作室', farm: '🌾 农场',
+  shop: '🍜 小生意（奶茶店）', tech: '💡 科技公司', factory: '🏭 工厂',
+  trade: '🚚 贸易公司', listed: '🏢 上市公司',
 }
 
 export default function Me() {

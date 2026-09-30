@@ -36,6 +36,49 @@ function bump(balances, account, side, amount) {
   return delta
 }
 
+// ============ 月末需清零的损益科目白名单 ============
+// 说明：
+//  - 这些科目每月在 monthEnd() 结转至「本年利润」后需清零，下月从 0 重新累计。
+//  - 必须同时清零所有带「-」后缀的明细子科目（如 管理费用-工资），否则子科目会逐月累积导致利润虚亏。
+//  - 「所得税费用」刻意不在此列表：企业所得税由 settleTax() 计提并当场结转至「本年利润」，
+//    若此处一并清零会造成跨月重复扣除、资产负债表恒等式失衡。
+//  - 「应交税费-*」属负债/资产科目，由 settleTax() 正常缴纳，禁止在此清零。
+const PNL_SUBJECTS_TO_RESET = [
+  '主营业务收入',
+  '主营业务成本',
+  '管理费用',
+  '财务费用',
+  '研发费用',
+  '营业外收入-补贴',
+]
+
+// 永不参与月末清零的科目（显式保护，防止后续误把税费类科目加入白名单）
+export const PNL_KEEP_BALANCE_SUBJECTS = [
+  '所得税费用',
+  '应交税费',
+]
+
+/**
+ * 清零本月损益科目（含明细子科目）。
+ * 供 monthEnd() 在结转损益至「本年利润」之后调用。
+ * @param {object} state 游戏状态（会被就地修改）
+ */
+export function clearPnLAccounts(state) {
+  const b = state.balances || {}
+  const isProtected = (acc) =>
+    PNL_KEEP_BALANCE_SUBJECTS.some((k) => acc === k || acc.startsWith(k + '-'))
+  // 先处理白名单主科目
+  PNL_SUBJECTS_TO_RESET.forEach((k) => {
+    if (b[k] != null) b[k] = 0
+  })
+  // 再处理所有明细子科目（如「管理费用-工资/房租/折旧」）
+  Object.keys(b).forEach((full) => {
+    if (isProtected(full)) return
+    const matched = PNL_SUBJECTS_TO_RESET.some((k) => full.startsWith(k + '-'))
+    if (matched) b[full] = 0
+  })
+}
+
 // 损益科目 → 累计损益类别（供利润表实时追踪）
 function pnlCat(account) {
   if (account === '主营业务收入' || account.startsWith('主营业务收入')) return 'revenue'
@@ -133,6 +176,24 @@ export function createCompany(companyId, diffId = 'easy', projectId = null) {
     eventBuff: {},                 // 当月随机事件数值缓冲（C）
     monthOrders: [],               // 当月订单（E）
     lastEvent: null,               // 最近一次随机事件（C）
+    // —— roguelike 天赋系统 ——
+    talents: [],                   // 已选天赋 id 列表（上限 3）
+    synergies: [],                 // 已触发羁绊 id
+    rescueLimit: 1,                // 破产兜底次数（备用金基础 1，资金羁绊 2）
+    rescues: 0,                    // 已用兜底次数
+    // 天赋倍率默认值（applyTalent 覆盖，monthEnd/taxAudit 等读取）
+    depreciationMult: 1, interestMult: 1, loanRateMult: 1, mgmtMult: 1,
+    purchaseDown: 0, salaryMult: 1, buffMult: 1, badEventMult: 1,
+    auditProbMult: 1, auditFineMult: 1, fineMult: null,
+    wageDiscontentMult: 1, strikeLossMult: null,
+    supplierRiskMult: 1, stockTieMult: 1, safetyStockMult: 1,
+    salePriceBoost: 0, creditTermBoost: 0, orderMarginBoost: 0,
+    angelBoost: 0, bridgeLoan: 0, bridgeRateBoost: 0,
+    taxRebate: 0, rndSuperBoost: 0,
+    talentReserve: false, talentLightReserve: 0, talentHitProduct: false,
+    talentInfluencer: false, talentBudgetEye: false, talentDataBoard: false,
+    talentInsider: false, talentPeerBench: false, talentMicroWhite: false,
+    infoLevel: 0,
   }
   return state
 }
@@ -142,16 +203,24 @@ export function createCompany(companyId, diffId = 'easy', projectId = null) {
 // choice: 'full' 不借款 | 'part' 借本金30% | 'low' 借本金70%
 export function applyFunding(state, choice) {
   const co = state.co
-  const own = co.initCash                       // 本金（股东出资）固定
+  // 天赋：天使投资 → 实收资本基数放大
+  let own = +(co.initCash * (1 + (state.angelBoost || 0))).toFixed(1)
   let borrow
   if (choice === 'low') borrow = +(own * 0.7).toFixed(1)
   else if (choice === 'part') borrow = +(own * 0.3).toFixed(1)
   else borrow = 0
+  // 天赋：过桥融资 → 开局追加 ¥10 万短期借款（利率上浮）
+  if (state.bridgeLoan) {
+    borrow = +(borrow + state.bridgeLoan).toFixed(1)
+    state.bridgeRateBoost = state.bridgeRateBoost || 0
+  }
   state.balances['银行存款'] = +(own + borrow).toFixed(1)  // 可动用资金 = 本金 + 借款
   state.balances['实收资本'] = own
   state.balances['短期借款'] = borrow
   state.scale = +((own + borrow) / own).toFixed(3)         // 借款放大经营规模
-  state.loans = borrow > 0 ? [{ principal: borrow, rate: co.economics.interestRate, since: 1 }] : []
+  // 天赋·快速融资：借款利率 ×loanRateMult（0.8）
+  const baseRate = (co.economics.interestRate + (state.bridgeRateBoost || 0)) * (state.loanRateMult || 1)
+  state.loans = borrow > 0 ? [{ principal: borrow, rate: +baseRate.toFixed(5), since: 1 }] : []
   state.choices.leverage = choice
   return state
 }
@@ -161,7 +230,7 @@ export function applyExpand(state, { borrow = 0, own = 0 } = {}) {
   const co = state.co
   if (borrow > 0) {
     applyBusiness(state, mk('银行存款', borrow, '短期借款', borrow, '扩张：银行借款'), state.month)
-    state.loans.push({ principal: borrow, rate: co.economics.interestRate, since: state.month + 1 })
+    state.loans.push({ principal: borrow, rate: +(co.economics.interestRate * (state.loanRateMult || 1)).toFixed(5), since: state.month + 1 })
   }
   if (own > 0) {
     applyBusiness(state, mk('银行存款', own, '实收资本', own, '扩张：利润再投入'), state.month)
@@ -249,6 +318,8 @@ export function settleTax(state, plans = []) {
   // 应税所得额：研发费用加计扣除（合法筹划），每花1元研发税前扣除2元
   // 兜底：仅科技类企业（co.id === 'tech'）有研发活动，非科技型企业不选研发加计，
   // 避免“连锁零售/工厂也能加计扣除”的设定穿帮（前端 choose 已拦截，此处为二次防护）。
+  // 天赋·研发加计 Pro：科技类企业加计比例 100%→120%（rndSuperBoost）
+  const rndSuper = TAX.RND_SUPER + (state.rndSuperBoost || 0)
   if (planSet.has('rndDeduction') && state.co?.id !== 'tech') {
     planSet.delete('rndDeduction')
     plans = plans.filter((p) => p !== 'rndDeduction')
@@ -256,7 +327,15 @@ export function settleTax(state, plans = []) {
   let taxableProfit = state.balances['本年利润'] || 0
   if (planSet.has('rndDeduction')) {
     const rnd = state.balances['研发费用'] || 0
-    taxableProfit = +(taxableProfit - rnd).toFixed(2) // 加计100%即再扣一次研发费用
+    // 加计 X% = 再扣 (X/100 × 研发费用)：100% 时即再扣 1 倍研发费用
+    taxableProfit = +(taxableProfit - rnd * rndSuper).toFixed(2)
+  }
+  // 天赋·税收返补：按实缴所得税 × taxRebate（默认 10%）返补到现金（营业外收入）
+  const cit0 = +((Math.max(0, taxableProfit)) * (taxableProfit > 0 && taxableProfit <= 300 ? TAX.CIT_SMALL : TAX.CIT)).toFixed(2)
+  const rebate = state.taxRebate ? +(cit0 * state.taxRebate).toFixed(2) : 0
+  if (rebate > 0) {
+    applyBusiness(state, mk('营业外收入-税收返补', rebate, '应交税费-税收返补', rebate, `税收返补¥${rebate}万`), state.month)
+    state.balances['本年利润'] = +((state.balances['本年利润'] || 0) + rebate).toFixed(2)
   }
   // 小型微利优惠：年应税所得≤300万按5%，否则25%（默认已按此规则，这里仅做展示标注）
   const useSmallBenefit = planSet.has('smallBenefit') && taxableProfit > 0 && taxableProfit <= 300
@@ -353,18 +432,20 @@ export function monthEnd(state, opts = {}) {
   const newEntries = []
 
   const costMult = (state.diffEcon && state.diffEcon.costMult) || 1
+  const depMult = state.depreciationMult || 1   // 天赋·节能改造
+  const intMult = state.interestMult || 1        // 天赋·政府贴息
   co.fixedAssets.forEach((fa) => {
-    const dep = +(fa.monthlyDep * costMult).toFixed(2)
+    const dep = +(fa.monthlyDep * costMult * depMult).toFixed(2)
     newEntries.push(...mk('管理费用-折旧', dep, '累计折旧', dep, `计提${fa.name}折旧`))
   })
   state.loans.forEach((loan) => {
-    const interest = +(loan.principal * loan.rate * costMult).toFixed(2)
+    const interest = +(loan.principal * loan.rate * costMult * intMult).toFixed(2)
     if (m >= loan.since) newEntries.push(...mk('财务费用-利息', interest, '应付利息', interest, `计提借款利息(月${m})`))
   })
   // 预付房租摊销：多付房租时一次性挂"预付账款-房租"，这里按月摊销进费用（权责发生制）
   const prepRent = state.choices?.rentMonths
   if (prepRent && prepRent > 0 && (state.balances['预付账款-房租'] || 0) > 0) {
-    const grossMonthly = co.economics.rent * (state.scale || 1) * costMult
+    const grossMonthly = co.economics.rent * (state.scale || 1) * costMult * (state.mgmtMult || 1)
     const discount = state.choices.rentDiscount || 0
     const monthlyRent = +(grossMonthly * (1 - discount)).toFixed(2)
     const remain = state.balances['预付账款-房租']
@@ -385,18 +466,36 @@ export function monthEnd(state, opts = {}) {
   const monthProfit = +(rev - costs).toFixed(2)
   state.balances['本年利润'] = +((state.balances['本年利润'] || 0) + monthProfit).toFixed(2)
   // 累计损益追踪：已改由 applyBusiness 实时累加至 state.cum（见 pnlCat），此处无需重复累加
-  // 清零本月损益科目（下月从 0 开始累计）。注意：
-  //  - 应交税费-销项/进项属负债/资产，由 settleTax 正常缴纳，不可在此清零
-  //  - 所得税费用由 settleTax 跨月管理，不在此清零，否则会与上述重复扣除问题叠加
-  // 清零本月损益科目（下月从 0 开始累计）。注意：
-  //  - 应交税费-销项/进项属负债/资产，由 settleTax 正常缴纳，不可在此清零
-  //  - 所得税费用由 settleTax 跨月管理，不在此清零
-  //  - 必须清空所有带后缀的子科目（如 管理费用-工资/房租），否则子科目会逐月累积导致利润虚亏
-  for (const k of ['主营业务收入', '主营业务成本', '管理费用', '财务费用', '研发费用', '营业外收入-补贴']) {
-    if (state.balances[k] != null) state.balances[k] = 0
-    for (const full of Object.keys(state.balances)) {
-      if (full === k || full.startsWith(k + '-')) state.balances[full] = 0
+  // 清零本月损益科目（下月从 0 开始累计）—— 逻辑已抽至 clearPnLAccounts()，见其注释中的白名单与保护科目说明
+  clearPnLAccounts(state)
+
+  // 天赋·轻量储备（现金流纪律）：拨 5% 入「储备金」，不占用破产兜底次数（rescueLimit 不变）
+  const lightReservePct = state.talentLightReserve || 0
+  if (lightReservePct > 0 && (state.balances['本年利润'] || 0) > 0) {
+    const allocL = +((state.balances['本年利润'] * lightReservePct).toFixed(2))
+    if (allocL > 0 && (state.balances['银行存款'] || 0) >= allocL) {
+      applyBusiness(state, [
+        { side: 'debit', account: '储备金', amount: allocL },
+        { side: 'credit', account: '银行存款', amount: allocL },
+      ], `轻储备拨备¥${allocL}万`, m)
     }
+  }
+  // 天赋·备用金：每月末自动从本年利润拨 10% 入「储备金」（利润为负则跳过）
+  if (state.talentReserve && (state.balances['本年利润'] || 0) > 0) {
+    const alloc = +((state.balances['本年利润'] * 0.1).toFixed(2))
+    // 简化实现：直接挂「储备金」科目（资产类，NATURE 默认借增贷减），从银行存款划转
+    if (alloc > 0 && (state.balances['银行存款'] || 0) >= alloc) {
+      applyBusiness(state, [
+        { side: 'debit', account: '储备金', amount: alloc },
+        { side: 'credit', account: '银行存款', amount: alloc },
+      ], `备用金拨备¥${alloc}万`, m)
+    }
+  }
+  // 天赋·预算之眼：记录下月固定费用预估（折旧+利息+工资）
+  if (state.talentBudgetEye) {
+    const nextDep = co.fixedAssets.reduce((t, fa) => t + fa.monthlyDep * costMult * (state.depreciationMult || 1), 0)
+    const nextInt = state.loans.reduce((t, l) => t + l.principal * l.rate * (state.interestMult || 1), 0)
+    state.budgetEye = { month: m + 1, total: +(nextDep + nextInt + co.economics.salary * (state.scale || 1)).toFixed(2) }
   }
 
   state.history.push({ month: m, cash: state.balances['银行存款'], profit: state.balances['本年利润'], revenue: rev, totalAssets: totalAssets(state.balances) })
@@ -465,7 +564,10 @@ export function loseLife(state) {
   state.lives -= 1
   if (state.lives < 0) {
     state.failed = true
-    state.failedReason = '容错次数用尽，经营失败'
+    // 区分硬核模式与普通模式，方便 Game 层给出不同失败提示
+    state.failedReason = state.difficulty === 'hardcore'
+      ? '硬核模式 · 容错 0 次，一次错误即失败'
+      : '容错次数用尽，经营失败'
   }
   return state.lives
 }
@@ -486,6 +588,17 @@ export function isBankrupt(state) {
   const assets = totalAssets(state.balances)
   const debt = sumAccount(state.balances, '短期借款') + sumAccount(state.balances, '应付账款') +
     sumAccount(state.balances, '应付职工薪酬') + sumAccount(state.balances, '应付利息') + sumAccount(state.balances, '应交税费')
+  // 天赋·备用金 + 羁绊·资本厚垫：现金为负时，储备金自动兜底（次数有限）
+  if (state.balances['银行存款'] < 0) {
+    const reserve = state.balances['储备金'] || 0
+    if (reserve > 0 && (state.rescues || 0) < (state.rescueLimit || 1)) {
+      state.rescues = (state.rescues || 0) + 1
+      state.balances['银行存款'] = 0
+      state.balances['储备金'] = 0
+      state.pendingRescueMsg = `💵 备用金兜底：储备金注入，现金回正（已用 ${state.rescues}/${state.rescueLimit || 1} 次）`
+      return false
+    }
+  }
   return assets < debt || state.balances['银行存款'] < 0
 }
 
@@ -665,10 +778,12 @@ export function resolveStrike(state, option) {
   const cash = state.balances['银行存款'] || 0
   let pay, note
   if (option === 'partial') {
-    pay = +(owed * 0.5).toFixed(2)
+    // 天赋·工会关系（strikeLossMult）：部分补发从 50% 提到 75%（损失减半）
+    const effRatio = state.strikeLossMult ? 0.75 : 0.5
+    pay = +(owed * effRatio).toFixed(2)
     state.wageDiscontent = Math.max(0, +((state.wageDiscontent || 0) - 40).toFixed(1))
     state.wageUnpaid = +(owed - pay).toFixed(2)
-    note = `部分补发：发放 ¥${pay}万（欠薪还剩 ¥${state.wageUnpaid}万），不满度下降但仍未平复。`
+    note = `部分补发：发放 ¥${pay}万（欠薪还剩 ¥${state.wageUnpaid}万），不满度下降但仍未平复。${state.strikeLossMult ? '（工会调解，损失减轻）' : ''}`
   } else if (option === 'over') {
     pay = +(owed * 1.5).toFixed(2)
     state.wageDiscontent = 0
@@ -728,7 +843,9 @@ export function taxAudit(state, month) {
   state.pendingAudit = null
   const adjustP = Math.min(0.6, 0.08 * (state.taxAdjusts || 0))      // 调账次数越多越易查
   const oweP = Math.min(0.5, 0.06 * (state.skippedTaxMonths || 0))  // 拖欠越久越易查
-  const p = Math.max(adjustP, oweP)
+  let p = Math.max(adjustP, oweP)
+  // 天赋·税务专家 / 法律顾问 / 羁绊·合规护城河·金身：概率系数
+  p = +(p * (state.auditProbMult || 1) * (state.synergyTaxShield || 1)).toFixed(3)
   if (p <= 0) return null
   if (Math.random() > p) return null
 
@@ -739,7 +856,8 @@ export function taxAudit(state, month) {
   // 1) 调账虚减的税额：补回 + 0.5 倍罚款
   if ((state.taxAdjustAmount || 0) > 0) {
     const back = +state.taxAdjustAmount.toFixed(2)
-    const fine = +(back * 0.5).toFixed(2)
+    const fineRate = (state.fineMult != null ? state.fineMult : 0.5) * (state.auditFineMult || 1)
+    const fine = +(back * fineRate).toFixed(2)
     entries.push(...mk('所得税费用', back, '应交税费', back, `税务稽查：调账不实，补回税款¥${back}万`))
     entries.push(...mk('所得税费用', fine, '银行存款', fine, `税务稽查罚款¥${fine}万`))
     events.push(`调账被查：补回税款¥${back}万、罚款¥${fine}万`)
@@ -818,7 +936,7 @@ export function operatingRevenue(state) {
 
 // ---- E. 订单系统：玩家主动"接单"，影响当月销售与赊销 ----
 // 生成一张订单：金额、毛利率、账期（0=现结，N=赊销N月后收）
-export function genOrder(state, rng = Math.random) {
+export function genOrder(state, rng = Math.random, opts = {}) {
   const co = state.co
   const base = co.economics.dealSize * (state.scale || 1)
   const sizeRoll = 0.6 + rng() * 0.9                 // 0.6~1.5 倍基准
@@ -826,9 +944,16 @@ export function genOrder(state, rng = Math.random) {
   const we = wageEfficiency(state)
   const amount = +(base * sizeRoll * moodFactor(state) * we).toFixed(2)
   const marginMult = (state.diffEcon && state.diffEcon.marginMult) || 1
-  const margin = +(co.economics.margin * marginMult * (0.7 + rng() * 0.6)).toFixed(2) // 毛利率波动（受难度系数影响）
-  const creditRoll = rng()
-  const credit = creditRoll < 0.45 ? 0 : creditRoll < 0.8 ? (rng() < 0.5 ? 1 : 2) : 3
+  let margin = +(co.economics.margin * marginMult * (0.7 + rng() * 0.6)).toFixed(2) // 毛利率波动（受难度系数影响）
+  // 天赋·爆款单品：第 1 张订单（或显式指定）毛利率 +15%
+  if ((state.talentHitProduct || 0) && opts.hitProduct) {
+    margin = Math.min(0.95, +(margin + 0.15).toFixed(2))
+  }
+  let creditRoll = rng()
+  let credit = creditRoll < 0.45 ? 0 : creditRoll < 0.8 ? (rng() < 0.5 ? 1 : 2) : 3
+  // 天赋·大客户通道：赊销回款期 3→2（credit 减少 creditTermBoost 个月），毛利 +5%
+  if (state.creditTermBoost && credit > 0) credit = Math.max(1, credit - state.creditTermBoost)
+  if (state.orderMarginBoost) margin = +(margin + state.orderMarginBoost).toFixed(2)
   const customers = ['便利店', '写字楼团购', '直播达人', '老客户返单', '政府定点', '连锁商超']
   const customer = customers[Math.floor(rng() * customers.length)]
   return {
@@ -915,14 +1040,30 @@ export function rollRandomEvent(state, rng = Math.random) {
   }
   // 进入新月前，清空上一个月的临时事件增益（避免永久叠加）
   state.eventBuff = {}
-  const library = RANDOM_EVENTS
-  if (!library.length) return null
-  const pick = library[Math.floor(rng() * library.length)]
-  // 应用事件数值效果（作用于 choices 临时系数，monthEnd 时读取）
-  state.eventBuff = state.eventBuff || {}
-  if (pick.effect) pick.effect(state)
+  const pick = pickWeightedEvent(rng)
+  if (!pick) return null
+  // 天赋·内幕消息：本事件触发时，把"下月倾向"写入 state（下月 rollRandomEvent 前 UI 可查）
+  if (state.talentInsider) {
+    // 简化：直接标记本月事件的 good/bad 供"提前 1 个月"展示（UI 读 state.lastEvent + talentInsider）
+  }
+  // 天赋修正：风险对冲 → bad 事件概率 ×0.5（命中 bad 时按概率"化解"成无效果）
+  if (pick.tone === 'bad' && state.badEventMult && rng() > state.badEventMult) {
+    // 事件被对冲化解：记录但不生效
+    state.lastEvent = { id: pick.id + '_hedge', title: pick.title + '（已对冲）', emoji: '🛡️', desc: pick.desc, tone: 'neutral', month: state.month, hedged: true }
+    return state.lastEvent
+  }
+  // 天赋·网红体质：good 事件 saleUp 幅度 +20%
+  if (pick.tone === 'good' && state.talentInfluencer && pick.id === 'viral') {
+    // viral 事件额外放大：saleUp 再 +0.2
+    if (pick.effect) pick.effect(state)
+    state.eventBuff.saleUp = (state.eventBuff.saleUp || 0) + 0.2
+  } else if (pick.effect) {
+    pick.effect(state)
+  }
   const ev = { id: pick.id, title: pick.title, emoji: pick.emoji, desc: pick.desc, tone: pick.tone, month: state.month }
   state.lastEvent = ev
+  // 天赋·内幕消息：记住本月事件倾向，下月初 UI 提示"下月可能…"（简化：直接读 lastEvent.tone）
+  if (state.talentInsider) state.foreshadow = { forMonth: state.month + 1, tone: pick.tone }
   return ev
 }
 
@@ -931,7 +1072,11 @@ export const RANDOM_EVENTS = [
   {
     id: 'materialSpike', title: '原料涨价', emoji: '📈', tone: 'bad',
     desc: '上游原料普涨，本月采购成本上浮 20%。',
-    effect: (s) => { s.eventBuff.purchaseUp = (s.eventBuff.purchaseUp || 0) + 0.2 },
+    effect: (s) => {
+      // 天赋·双供应商：涨价影响 ×supplierRiskMult（0.5）
+      const spike = 0.2 * (s.supplierRiskMult || 1)
+      s.eventBuff.purchaseUp = (s.eventBuff.purchaseUp || 0) + spike
+    },
   },
   {
     id: 'viral', title: '网红打卡爆单', emoji: '🔥', tone: 'good',
@@ -971,7 +1116,72 @@ export const RANDOM_EVENTS = [
     desc: '小微企业获政府补贴 ¥1万，直接入账。',
     effect: (s) => { applyBusiness(s, mk('银行存款', 1, '营业外收入-补贴', 1, '政策补贴入账'), s.month) },
   },
+  // —— 扩展事件（供应商/客户/政策/经营/突发，覆盖更多真实场景）——
+  {
+    id: 'supplierCut', title: '供应商优惠', emoji: '🧾', tone: 'good',
+    desc: '老供应商季度返点，本月采购成本 -10%。',
+    effect: (s) => { s.eventBuff.purchaseDown = (s.eventBuff.purchaseDown || 0) + 0.1 },
+  },
+  {
+    id: 'clientArrears', title: '客户赖账', emoji: '😤', tone: 'bad',
+    desc: '一笔赊销客户拖延付款，挂应收账款 ¥1.5万，下月才能收回。',
+    effect: (s) => {
+      applyBusiness(s, mk('应收账款', 1.5, '银行存款', 1.5, '客户赖账回款延迟'), s.month)
+    },
+  },
+  {
+    id: 'policyCUT', title: '研发新政', emoji: '🏛️', tone: 'good',
+    desc: '政府出台研发新政，研发费用加计比例临时提高，本期可多抵 ¥0.5万税。',
+    effect: (s) => { applyBusiness(s, mk('应交税费', 0.5, '营业外收入-税收减免', 0.5, '研发新政多抵税'), s.month) },
+  },
+  {
+    id: 'staffRise', title: '集体加薪', emoji: '💪', tone: 'neutral',
+    desc: '员工集体要求涨薪 8%，本月工资支出上浮。',
+    effect: (s) => { s.eventBuff.salaryUp = (s.eventBuff.salaryUp || 0) + 0.08 },
+  },
+  {
+    id: 'equipmentBreak', title: '设备故障', emoji: '🔧', tone: 'bad',
+    desc: '核心设备损坏，紧急维修支出 ¥1.2万，本月收入 -10%。',
+    effect: (s) => {
+      applyBusiness(s, mk('管理费用-维修', 1.2, '银行存款', 1.2, '设备紧急维修'), s.month)
+      s.eventBuff.saleUp = (s.eventBuff.saleUp || 0) - 0.1
+    },
+  },
+  {
+    id: 'pressCoverage', title: '媒体报道', emoji: '📰', tone: 'good',
+    desc: '本地媒体报道了你的经营故事，品牌曝光提升，本月收入 +20%。',
+    effect: (s) => { s.eventBuff.saleUp = (s.eventBuff.saleUp || 0) + 0.2 },
+  },
+  {
+    id: 'powerOutage', title: '突发停电', emoji: '⚡', tone: 'bad',
+    desc: '区域停电半天，部分订单无法履约，本月收入 -8%。',
+    effect: (s) => { s.eventBuff.saleUp = (s.eventBuff.saleUp || 0) - 0.08 },
+  },
+  {
+    id: 'taxRemit', title: '退税到账', emoji: '🏦', tone: 'good',
+    desc: '上年度汇算清缴多缴税款退回，现金 +¥0.8万。',
+    effect: (s) => { applyBusiness(s, mk('银行存款', 0.8, '应交税费-退税', 0.8, '退税到账'), s.month) },
+  },
 ]
+
+// 事件按权重随机：good/bad 大事件权重低，日常事件权重高
+const EVENT_WEIGHTS = {
+  materialSpike: 1.2, viral: 1.0, inspection: 0.8, staffLeave: 1.0,
+  groupOrder: 1.0, rentFree: 0.7, refund: 1.0, subsidy: 0.7,
+  supplierCut: 0.9, clientArrears: 0.9, policyCUT: 0.5, staffRise: 1.0,
+  equipmentBreak: 0.9, pressCoverage: 0.8, powerOutage: 0.9, taxRemit: 0.6,
+}
+
+function pickWeightedEvent(rng) {
+  const ids = Object.keys(EVENT_WEIGHTS)
+  const total = ids.reduce((t, id) => t + (EVENT_WEIGHTS[id] || 1), 0)
+  let roll = rng() * total
+  for (const id of ids) {
+    roll -= (EVENT_WEIGHTS[id] || 1)
+    if (roll <= 0) return RANDOM_EVENTS.find((e) => e.id === id) || RANDOM_EVENTS[0]
+  }
+  return RANDOM_EVENTS[0]
+}
 
 // ---- D. 经营里程碑 ----
 export const MILESTONES = [
@@ -986,6 +1196,20 @@ export function checkMilestones(state) {
   const fresh = MILESTONES.filter((m) => state.month >= m.month && !reached.includes(m.id))
   if (fresh.length) state.reachedMilestones = [...reached, ...fresh.map((m) => m.id)]
   return fresh
+}
+
+// ---- 过程性成就检测（月度循环每步检查，返回新达成 badge id 列表） ----
+// 与 checkMilestones 并列但面向 UserContext 徽章系统
+export function checkProcessBadges(state) {
+  const earned = []
+  const has = (id) => (state.earnedBadges || []).includes(id)
+  state.earnedBadges = state.earnedBadges || []
+  const give = (id, cond) => { if (cond && !has(id)) { state.earnedBadges.push(id); earned.push(id) } }
+  // 零失误（硬核模式通关且无错误凭证）
+  give('cleanBook', state.difficulty === 'hardcore' && (state.errors || []).length === 0 && state.failed === false)
+  // 诚信经营：从未邪道且满 12 个月
+  give('noEvil', (state.evilCount || 0) === 0 && (state.month || 0) >= 12)
+  return earned
 }
 
 // ---- B. 决策后果回放：量化"你的选择带来了什么差异" ----

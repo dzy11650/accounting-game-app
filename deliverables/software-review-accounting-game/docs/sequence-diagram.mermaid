@@ -1,0 +1,49 @@
+# 序列图 - Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant UI as Game.jsx（UI层）
+    participant ENG as engine.js（引擎层）
+    participant DATA as data/*.js（数据层）
+    participant SAVE as localStorage（存档）
+
+    Note over UI,SAVE: 开局初始化
+    UI->>DATA: createCompany(companyId, difficulty, projectId)
+    DATA-->>UI: state（空壳初始状态）
+    UI->>ENG: createCompany(companyId, difficulty, projectId)
+    ENG->>DATA: getCompany(companyId)
+    DATA-->>ENG: Company 对象
+    ENG-->>UI: state（含初始余额/科目）
+    UI->>SAVE: loadSave()（加载存档）
+    SAVE-->>UI: 旧存档状态（无则返回空）
+
+    Note over UI,ENG: 业务操作（如接单/卖货）
+    UI->>ENG: fulfillOrder(state, order)
+    ENG->>ENG: vatOnSale 计算销项税
+    ENG->>ENG: costOfSale 结转成本
+    ENG->>ENG: applyBusiness 记账 + 写账本
+    ENG-->>UI: state（业务操作后更新）
+    UI->>SAVE: writeSave(state)
+
+    Note over UI,ENG: 月度结账
+    UI->>ENG: monthEnd(state)
+    ENG->>ENG: 计提折旧/计息/摊销
+    ENG->>ENG: 结转损益到本年利润
+    ENG->>ENG: 邪道玩法触发（罢工/稽查/爆雷）
+    ENG-->>UI: state（月末结账后状态）
+    UI->>ENG: endOfMonthExtras(state)
+    ENG-->>UI: 应收/应付到期、随机事件、里程碑
+
+    Note over UI,ENG: 报表与评分
+    UI->>ENG: buildReports(state)
+    ENG-->>UI: balance/income/cashflow 报表对象
+    UI->>ENG: scoreMetrics(state)
+    ENG-->>UI: 四维评分指标
+
+    Note over UI,ENG: 决策分析
+    UI->>ENG: analyzeDecision(before, after, action)
+    ENG-->>UI: 财务诊断/影响分析
+
+    Note over UI,ENG: 跨端构建集成
+    UI->>ENG: 同一套 engine.js / data 供 Electron/Tauri/Capacitor 共享
+```

@@ -36,7 +36,29 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="card" onClick={() => navigate('/reports')} style={{ cursor: 'pointer' }}>
+      <div className="card" onClick={() => navigate('/detective')} style={{ cursor: 'pointer', background: 'linear-gradient(135deg,#FFF8E8,#F0F9FF)' }}>
+        <div className="flex between center">
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>🔍 财务侦探</div>
+            <div style={{ color: 'var(--text-soft)', fontSize: 13, marginTop: 4 }}>
+              找出被篡改的会计分录，强化借贷平衡意识
+            </div>
+          </div>
+          <span style={{ fontSize: 22 }}>›</span>
+        </div>
+      </div>
+
+      <div className="card" onClick={() => navigate('/metashop')} style={{ cursor: 'pointer', background: 'linear-gradient(135deg,#FFF3D6,#E9F8F6)' }}>
+        <div className="flex between center">
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>🛒 天赋商店（局外）</div>
+            <div style={{ color: 'var(--text-soft)', fontSize: 13, marginTop: 4 }}>用金币永久解锁天赋 · 局外成长</div>
+          </div>
+          <span style={{ fontSize: 22 }}>›</span>
+        </div>
+      </div>
+
+            <div className="card" onClick={() => navigate('/reports')} style={{ cursor: 'pointer' }}>
         <div className="flex between center">
           <div>
             <div style={{ fontWeight: 800, fontSize: 16 }}>📊 财务报表中心</div>

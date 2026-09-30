@@ -14,6 +14,11 @@ const defaultState = {
   gameBestProfit: 0,
   companiesRun: [], // 已体验的公司类型 id
   runHistory: [], // H: 每局通关记录 { coId, coName, profit, stars, months, date }
+
+  // —— 局外成长（meta-progression）——
+  metaUnlockedTalents: [], // 用局外金币购买、永久解锁的天败 id
+  metaXp: 0,                // 局外经验
+  metaLevel: 1,            // 局外等级 = floor(metaXp/500)+1
 }
 
 function reducer(state, action) {
@@ -62,6 +67,13 @@ function reducer(state, action) {
     }
     case 'SET_NAME':
       return { ...state, name: action.name, avatar: action.avatar || state.avatar }
+    case 'UNLOCK_TALENT': {
+      if ((state.metaUnlockedTalents || []).includes(action.id)) return state
+      if (state.coins < action.cost) return state
+      return { ...state, coins: state.coins - action.cost, metaUnlockedTalents: [...(state.metaUnlockedTalents || []), action.id] }
+    }
+    case 'ADD_META_XP':
+      return { ...state, metaXp: state.metaXp + action.amount, metaLevel: Math.floor((state.metaXp + action.amount) / 500) + 1 }
     case 'RESET':
       return { ...defaultState }
     default:

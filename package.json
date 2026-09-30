@@ -9,13 +9,15 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "pack": "npm run build && electron-builder --win dir",
+    "pack": "npm run build && electron-builder --win nsis dir",
+    "pack:nsis": "npm run build && electron-builder --win nsis",
     "pack:portable": "npm run build && electron-builder --win portable",
     "pack:dir": "npm run build && electron-builder --win dir",
     "tauri": "tauri",
     "android:build": "npm run build && npx cap sync android",
     "android:open": "npx cap open android",
-    "android:run": "npm run build && npx cap sync android && npx cap run android"
+    "android:run": "npm run build && npx cap sync android && npx cap run android",
+    "test": "node --test src/__tests__/*.test.js"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
@@ -47,6 +49,7 @@
     ],
     "win": {
       "target": [
+        "nsis",
         "dir"
       ],
       "icon": null
@@ -58,8 +61,9 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "artifactName": "kjxdj-electron-${version}-setup.exe"
+      "artifactName": "会计小当家-setup-${version}.exe"
     },
-    "artifactName": "kjxdj-electron-${version}-portable"
+    "artifactName": "kjxdj-electron-${version}-portable",
+    "electronDist": "electron-dist-win"
   }
 }

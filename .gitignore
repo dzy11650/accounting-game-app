@@ -1,4 +1,7 @@
 node_modules/
+electron-dist-win/
+node_modules/.cache/
+.cache/
 
 dist/
 release/

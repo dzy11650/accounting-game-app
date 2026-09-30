@@ -1,0 +1,20 @@
+{
+  "appId": "com.accounting.game",
+  "productName": "会计小当家",
+  "files": [ "dist/**/*", "electron/**/*" ],
+  "directories": { "output": "release" },
+  "electronDist": "/tmp/electron-dist-win",
+  "win": {
+    "target": [ "nsis", "portable", "dir" ],
+    "icon": null
+  },
+  "portable": {
+    "artifactName": "kjxdj-electron-${version}-portable.exe"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "artifactName": "会计小当家-setup-${version}.exe"
+  }
+}

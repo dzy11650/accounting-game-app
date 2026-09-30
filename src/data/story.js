@@ -300,6 +300,7 @@ export const STORY = [
   },
   {
     chapter: 7,
+    id: 'continuing',
     title: '第七章 · 持续经营',
     tier: 'senior',
     loop: true,
