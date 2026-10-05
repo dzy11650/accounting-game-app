@@ -15,7 +15,6 @@ jobs:
   build-win-portable:
     runs-on: windows-latest
     env:
-      DEBUG: electron-builder
       ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
     steps:
       - name: Checkout
