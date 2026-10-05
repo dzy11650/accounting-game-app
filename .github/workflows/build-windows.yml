@@ -16,7 +16,6 @@ jobs:
     runs-on: windows-latest
     env:
       DEBUG: electron-builder
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
     steps:
       - name: Checkout
@@ -31,7 +30,10 @@ jobs:
       - name: Vite build
         run: npm run build
       - name: Build portable exe
-        run: npx electron-builder --win portable --config.win.sign=false
+        shell: pwsh
+        run: |
+          $env:CSC_IDENTITY_AUTO_DISCOVERY = "false"
+          npx electron-builder --win portable --config.win.sign=false
       - name: List release artifacts
         run: Get-ChildItem -Recurse .\release | Select-Object FullName, Length
       - name: Zip win-unpacked for debugging
