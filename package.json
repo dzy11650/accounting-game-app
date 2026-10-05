@@ -45,7 +45,8 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "!electron-dist-win/**"
     ],
     "win": {
       "target": [
@@ -63,7 +64,6 @@
       "createDesktopShortcut": true,
       "artifactName": "会计小当家-setup-${version}.exe"
     },
-    "artifactName": "kjxdj-electron-${version}-portable",
-    "electronDist": "electron-dist-win"
+    "artifactName": "kjxdj-electron-${version}-portable"
   }
 }

@@ -17,6 +17,7 @@ jobs:
     env:
       DEBUG: electron-builder
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,16 +26,12 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      # 项目 package.json 含非标准 allowScripts 字段（为 esbuild 放行 postinstall），
-      # npm ci 在部分 npm 版本下会因此校验失败，故改用 install --legacy-peer-deps
       - name: Install dependencies
         run: npm install --legacy-peer-deps
       - name: Vite build
         run: npm run build
-      # 关键：--config.electronDist 传空字符串，覆盖 package.json 里指向本地缓存目录的
-      # electronDist 配置，强制 electron-builder 从官方源下载完整的 Windows 版 electron
       - name: Build portable exe
-        run: npx electron-builder --win portable --config.electronDist="" --config.win.sign=false
+        run: npx electron-builder --win portable --config.win.sign=false
       - name: List release artifacts
         run: Get-ChildItem -Recurse .\release | Select-Object FullName, Length
       - name: Zip win-unpacked for debugging
