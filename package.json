@@ -51,8 +51,10 @@
     "win": {
       "target": [
         "nsis",
-        "dir"
+        "dir",
+        "portable"
       ],
+      "sign": false,
       "icon": null
     },
     "portable": {

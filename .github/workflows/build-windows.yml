@@ -40,7 +40,7 @@ jobs:
           # 仅在 Build step 的 PowerShell 进程内设置，避免顶层 env 里
           # CSC_IDENTITY_AUTO_DISCOVERY: 'false' 被字面量解析成模块路径。
           $env:CSC_IDENTITY_AUTO_DISCOVERY = 'false'
-          npx electron-builder --win portable --config.win.sign=false
+          npx electron-builder --win portable
 
       - name: List release artifacts
         shell: pwsh
