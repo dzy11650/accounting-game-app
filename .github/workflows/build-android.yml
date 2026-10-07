@@ -7,47 +7,78 @@ on:
     paths:
       - 'src/**'
       - 'package.json'
+      - 'package-lock.json'
       - 'android/**'
       - '.github/workflows/build-android.yml'
 
 jobs:
-  build-android:
+  build-android-apk:
     runs-on: ubuntu-latest
+    env:
+      # Capacitor & Android
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+      JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Java 17
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-      
+          cache: 'gradle'
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-      
+        with:
+          api-level: 34
+          ndk-version: 25.2.9519
+          cmake-version: 3.22.1
+
       - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      
+
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
-      
+        run: npm ci
+
       - name: Vite build
         run: npm run build
-      
+
       - name: Sync Capacitor
         run: npx cap sync android
-      
-      - name: Build APK (debug for now)
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      - name: Build release APK
         run: |
           cd android
-          ./gradlew assembleDebug
-      
+          ./gradlew assembleRelease
+        env:
+          # 如果你有签名 keystore 并想做 release 签名，这里打开
+          # ANDROID_KEYSTORE_PATH: ${{ secrets.ANDROID_KEYSTORE }}
+          # ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          # ANDROID_KEY_ALIAS: accounting
+          # ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # 否则使用 debug 签名（默认）
+          ORG_GRADLE_PROJECT_androidInjectedSigningStoreFile: ${{ github.workspace }}/debug.keystore
+          ORG_GRADLE_PROJECT_androidInjectedSigningStorePassword: android
+          ORG_GRADLE_PROJECT_androidInjectedSigningKeyAlias: androiddebugkey
+          ORG_GRADLE_PROJECT_androidInjectedSigningKeyPassword: android
+
+      -name: Rename APK to v2.0.4
+        if: success()
+        run: |
+          mv android/app/build/outputs/apk/release/app-release.apk app-release-2.0.4.apk
+
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: accounting-game-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: accounting-game-apk-v2.0.4
+          path: app-release-2.0.4.apk
           retention-days: 30
