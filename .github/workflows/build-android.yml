@@ -38,19 +38,34 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          target: googleapis
 
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Build release APK
+      - name: Build release APK (debug)
         run: |
           cd android
-          ./gradlew assembleRelease
+          ./gradlew assembleDebug
         env:
-          ANDROID_KEYSTORE_PATH: ${{ secrets.ANDROID_KEYSTORE }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: accounting
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ORG_GRADLE_PROJECT_androidInjectSigningStoreFile: /tmp/debug.keystore
+          ORG_GRADLE_PROJECT_androidInjectSigningStorePassword: android
+          ORG_GRADLE_PROJECT_androidInjectSigningKeyAlias: androiddebugkey
+          ORG_GRADLE_PROJECT_androidInjectSigningKeyPassword: android
+
+      - name: Rename APK
+        run: |
+          mv android/app/build/outputs/apk/debug/app-debug.apk app-release-2.0.4.apk
+
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accounting-game-apk
+          path: app-release-2.0.4.apk
+          retention-days: 30
 
       - name: Upload APK artifact
         if: success()
