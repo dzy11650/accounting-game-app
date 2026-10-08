@@ -26,6 +26,9 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+          accept-android-sdk-licenses: true
 
       - name: Setup Node 20
         uses: actions/setup-node@v4
@@ -46,19 +49,12 @@ jobs:
         run: chmod +x android/gradlew
 
       - name: Build debug APK
-        run: |
-          cd android
-          ./gradlew assembleDebug
-
-      - name: Rename APK to v2.0.4
-        if: success()
-        run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk app-release-2.0.4.apk
+        run: cd android && ./gradlew assembleDebug
 
       - name: Upload APK artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: accounting-game-apk-v2.0.4
-          path: app-release-2.0.4.apk
+          path: android/app/build/outputs/apk/debug/app-release-debug.apk
           retention-days: 30
