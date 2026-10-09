@@ -362,3 +362,9 @@ button {
 .mt12 { margin-top: 12px; }
 .mt20 { margin-top: 20px; }
 .fade-in { animation: toast-in .4s ease; }
+
+/* Detective page - highlighted entry */
+.highlighted {
+  border: 2px solid #e74c3c !important;
+  background: #FFF5F5 !important;
+}
