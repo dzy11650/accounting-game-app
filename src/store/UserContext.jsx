@@ -19,6 +19,16 @@ const defaultState = {
   metaUnlockedTalents: [], // 用局外金币购买、永久解锁的天败 id
   metaXp: 0,                // 局外经验
   metaLevel: 1,            // 局外等级 = floor(metaXp/500)+1
+
+  // —— 财务侦探战绩 ——
+  detective: {
+    totalGames: 0,
+    totalScores: 0,
+    bestScore: 0,
+    streak: 0,
+    badges: [],
+    lastPlayed: null,
+  },
 }
 
 function reducer(state, action) {
@@ -74,6 +84,28 @@ function reducer(state, action) {
     }
     case 'ADD_META_XP':
       return { ...state, metaXp: state.metaXp + action.amount, metaLevel: Math.floor((state.metaXp + action.amount) / 500) + 1 }
+    case 'DETECTIVE_RESULT': {
+      const { score, passed } = action.payload
+      const prev = state.detective || defaultState.detective
+      const newStreak = passed ? prev.streak + 1 : 0
+      const newBest = Math.max(prev.bestScore, score)
+      let newBadges = [...(prev.badges || [])]
+      if (passed && !newBadges.includes('detective_first')) newBadges.push('detective_first')
+      if (newBest >= 95 && !newBadges.includes('detective_master')) newBadges.push('detective_master')
+      if (newStreak >= 3 && !newBadges.includes('detective_streak3')) newBadges.push('detective_streak3')
+      if ((prev.totalGames || 0) >= 9 && !newBadges.includes('detective_veteran')) newBadges.push('detective_veteran')
+      return {
+        ...state,
+        detective: {
+          totalGames: (prev.totalGames || 0) + 1,
+          totalScores: (prev.totalScores || 0) + score,
+          bestScore: newBest,
+          streak: newStreak,
+          badges: newBadges,
+          lastPlayed: new Date().toISOString(),
+        },
+      }
+    }
     case 'RESET':
       return { ...defaultState }
     default:

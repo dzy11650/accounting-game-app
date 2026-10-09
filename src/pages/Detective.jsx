@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useUser } from '../store/UserContext.jsx'
 import {
   buildRound,
   judge,
@@ -10,6 +11,7 @@ import {
 
 export default function Detective() {
   const navigate = useNavigate()
+  const { dispatch } = useUser()
   const [round, setRound] = useState(() => buildRound(5))
   const [idx, setIdx] = useState(0)
   const [marked, setMarked] = useState([])
