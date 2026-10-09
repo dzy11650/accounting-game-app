@@ -14,14 +14,13 @@ export default function Detective() {
   const [idx, setIdx] = useState(0)
   const [marked, setMarked] = useState([])
   const [chosenId, setChosenId] = useState(null)
-  const [result, setResult] = useState(null)   // 当前题提交后的判定结果
+  const [result, setResult] = useState(null)
   const [finished, setFinished] = useState(false)
 
   const total = round.length
   const cur = round[idx]
   if (!cur) return null
 
-  // 点击标记 / 取消标记
   const toggleMark = (displayIndex) => {
     if (finished || result !== null) return
     setMarked((prev) =>
@@ -31,14 +30,12 @@ export default function Detective() {
     )
   }
 
-  // 提交当前题
   const submit = () => {
     if (chosenId === null || finished) return
     const r = judge(cur, marked, chosenId)
     setResult(r)
   }
 
-  // 下一题 / 重开
   const next = () => {
     if (idx + 1 >= total) {
       setFinished(true)
@@ -103,114 +100,94 @@ export default function Detective() {
           return (
             <div
               key={e.displayIndex}
-              onClick={() => toggleMark(e.displayIndex)}
+              onClick={() => result === null && toggleMark(e.displayIndex)}
+              className={`entry-row ${highlight ? 'highlighted' : ''}`}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '10px 12px',
-                marginBottom: 8,
-                borderRadius: 8,
                 cursor: result === null ? 'pointer' : 'default',
-                border: highlight ? '2px solid #e74c3c' : '1px solid var(--line)',
-                background: highlight ? '#FFF5F5' : '#fff',
-                transition: 'all .2s',
                 opacity: result !== null ? 0.7 : 1,
               }}
             >
-              <span className={`badge ${e.side}`}>{e.side === 'debit' ? '借' : '贷'}</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600 }}>{e.account}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>{e.amount} 万元</div>
+              <div className="entry-side debit">
+                <div className="label">借方</div>
+                <div className="acc">{e.debitAccount}</div>
+                <div className="amt">{e.debitAmount}</div>
               </div>
-              {highlight && <span style={{ color: '#e74c3c', fontWeight: 700, fontSize: 12 }}>✓ 已标记</span>}
+              <div className="entry-side credit">
+                <div className="label">贷方</div>
+                <div className="acc">{e.creditAccount}</div>
+                <div className="amt">{e.creditAmount}</div>
+              </div>
             </div>
           )
         })}
       </div>
 
-      {/* ── 提示 ── */}
-      <div className="card" style={{ marginBottom: 12, background: '#FFFBEB' }}>
-        <div style={{ fontSize: 13 }}>💡 {cur.hint}</div>
+      {/* ── 修正方案选择 ── */}
+      <div className="section-title">💡 请选择修正方案</div>
+      <div className="card">
+        {cur.options.map((opt, i) => (
+          <div
+            key={opt.id}
+            className={`option ${chosenId === opt.id ? 'selected' : ''}`}
+            onClick={() => result === null && setChosenId(opt.id)}
+            style={{ cursor: result === null ? 'pointer' : 'default' }}
+          >
+            <div className="opt-key">{String.fromCharCode(65 + i)}</div>
+            <div>{opt.desc}</div>
+          </div>
+        ))}
       </div>
 
-      {/* ── 修正方案 ── */}
-      <div className="section-title">✅ 选择修正方案</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
-        {cur.options.map((opt) => {
-          const selected = chosenId === opt.id
-          return (
-            <div
-              key={opt.id}
-              onClick={() => result === null && setChosenId(opt.id)}
-              style={{
-                border: selected ? '2px solid var(--accent)' : '1px solid var(--line)',
-                borderRadius: 8,
-                padding: 12,
-                background: selected ? '#F0F9FF' : '#fff',
-                cursor: result === null ? 'pointer' : 'default',
-                transition: 'all .2s',
-                opacity: result !== null ? 0.7 : 1,
-              }}
-            >
-              <div style={{ fontWeight: 700, marginBottom: 8 }}>{opt.label}</div>
-              {opt.entries.map((e, i) => (
-                <div key={i} style={{ display: 'flex', gap: 10, fontSize: 13, marginBottom: 4 }}>
-                  <span className={`badge ${e.side}`}>{e.side === 'debit' ? '借' : '贷'}</span>
-                  <span style={{ flex: 1 }}>{e.account} · {e.amount} 万元</span>
-                </div>
-              ))}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* ── 提交按钮 ── */}
-      {result === null && (
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 16 }}>
+      {/* ── 操作按钮 ── */}
+      <div className="mt20" style={{ display: 'flex', gap: 10 }}>
+        {!result ? (
           <button
             className="btn"
-            style={{ background: 'var(--accent-deep)', color: '#fff', minWidth: 120 }}
             onClick={submit}
-            disabled={chosenId === null}
+            disabled={chosenId === null || marked.length === 0}
           >
             提交答案
           </button>
-          <button className="btn ghost" onClick={restart} style={{ minWidth: 120, border: '1px solid var(--line)' }}>
-            重新开始
+        ) : (
+          <button className="btn secondary" onClick={next}>
+            {idx + 1 >= total ? '查看成绩' : '下一题'}
           </button>
+        )}
+      </div>
+
+      {/* ── 结果反馈 ── */}
+      {result && (
+        <div
+          className="card mt12"
+          style={{
+            background: result.correct ? '#E4F8F1' : '#FFEDED',
+            borderLeft: result.correct ? '5px solid var(--accent)' : '5px solid #FF6B6B',
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 16, color: result.correct ? 'var(--accent-deep)' : '#FF6B6B' }}>
+            {result.correct ? '✅ 答对了！' : '❌ 答错了'}
+          </div>
+          {!result.correct && result.hint && (
+            <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text-soft)' }}>
+              提示：{result.hint}
+            </div>
+          )}
         </div>
       )}
 
-      {/* ── 反馈 + 下一题 ── */}
-      {result !== null && (
-        <div className="card mt12" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>
-            {result.correct ? '✅' : '❌'}
-          </div>
-          <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
-            {result.correct ? '完全正确！' : '还有问题'}
-          </div>
-          <div style={{ fontSize: 13, color: 'var(--text-soft)', marginBottom: 12 }}>
-            {result.explanation}
-          </div>
-          <button className="btn" style={{ background: 'var(--accent)', minWidth: 160 }} onClick={next}>
-            {idx + 1 >= total ? '查看结果' : '下一题 →'}
-          </button>
-        </div>
-      )}
-
-      {/* ── 结算 ── */}
+      {/* ── 结算界面 ── */}
       {finished && (
-        <div className="card mt16" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
-          <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 8 }}>本局完成！</div>
-          <div style={{ fontSize: 16, color: 'var(--text-soft)', marginBottom: 16 }}>
-            得分：{score} 分
-          </div>
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-            <button className="btn" style={{ background: 'var(--accent)' }} onClick={restart}>再来一局</button>
-            <button className="btn ghost" onClick={() => navigate('/')}>返回首页</button>
+        <div className="modal-mask" onClick={restart}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 48 }}>🏆</div>
+              <div style={{ fontWeight: 800, fontSize: 22, marginTop: 8 }}>案件告破！</div>
+            </div>
+            <div className="card" style={{ background: '#FFF1E8', marginBottom: 12 }}>
+              <div style={{ fontSize: 14, color: 'var(--text-soft)' }}>本次得分</div>
+              <div style={{ fontWeight: 900, fontSize: 36, color: 'var(--primary-deep)' }}>{score}</div>
+            </div>
+            <button className="btn" onClick={restart}>再来一局</button>
           </div>
         </div>
       )}
