@@ -2,6 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  base: '/accounting-game/',
+  base: '/accounting-game/', // Cloudflare Pages 需要
   plugins: [react()],
 })
