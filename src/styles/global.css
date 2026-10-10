@@ -363,6 +363,12 @@ button {
 .mt20 { margin-top: 20px; }
 .fade-in { animation: toast-in .4s ease; }
 
+/* ── 财务侦探高亮样式 ── */
+.highlighted {
+  border: 2px solid #e74c3c !important;
+  background: #FFF5F5 !important;
+}
+
 /* Detective page - highlighted entry */
 .highlighted {
   border: 2px solid #e74c3c !important;
