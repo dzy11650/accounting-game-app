@@ -135,6 +135,18 @@ export function UserProvider({ children }) {
 
 export function useUser() {
   const ctx = useContext(UserContext)
-  if (!ctx) throw new Error('useUser must be used within UserProvider')
+
+  if (!ctx) {
+    console.warn(
+      '[UserContext] useUser called outside UserProvider. Falling back to a safe default context to prevent a white screen.'
+    )
+
+    const noopDispatch = () => {}
+    return {
+      state: defaultState,
+      dispatch: noopDispatch,
+    }
+  }
+
   return ctx
 }
