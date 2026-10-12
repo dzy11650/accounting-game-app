@@ -13,7 +13,7 @@ import {
   genOrder, fulfillOrder, trackChoice, decisionInsights, endOfMonthExtras,
   scoreMetrics, overallStars, MILESTONES, checkMilestones,
   analyzeDecision, financialSnapshot, complianceNow, checkProcessBadges,
-  vatOnPurchaseForFactory,
+  vatOnPurchaseForFactory, expenseRnD, capitalizeRnD, amortizeRnD,
 } from '../lib/engine.js'
 import { pickTalents, applyTalent } from '../data/talents.js'
 import TalentPicker from '../components/GameStart/TalentPicker.jsx'
@@ -395,6 +395,30 @@ function Game() {
       setSim(s)
       finish(s)
       return { handled: true, selfContained: true }
+    }
+    if (a.type === 'expenseRnD') {
+      const res = expenseRnD(s, a.amount)
+      if (res && res.success) {
+        setToast(`研发费用化：¥${res.amount}万 → 研发费用（当期损益）`)
+        setLastEntries(res.entries)
+      }
+      return { handled: true, selfContained: false }
+    }
+    if (a.type === 'capitalizeRnD') {
+      const res = capitalizeRnD(s, a.amount, a.years)
+      if (res && res.success) {
+        setToast(`研发资本化：¥${res.amount}万 → 无形资产-软件（分${a.years}年摊销）`)
+        setLastEntries(res.entries)
+      }
+      return { handled: true, selfContained: false }
+    }
+    if (a.type === 'amortizeRnD') {
+      const res = amortizeRnD(s, a.amount)
+      if (res && res.success) {
+        setToast(`无形资产摊销：¥${res.amount}万/月`)
+        setLastEntries(res.entries)
+      }
+      return { handled: true, selfContained: false }
     }
     return { handled: false }
   }
