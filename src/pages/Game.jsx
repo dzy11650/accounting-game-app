@@ -14,6 +14,7 @@ import {
   scoreMetrics, overallStars, MILESTONES, checkMilestones,
   analyzeDecision, financialSnapshot, complianceNow, checkProcessBadges,
   vatOnPurchaseForFactory, expenseRnD, capitalizeRnD, amortizeRnD, ipoFunding,
+  pickCompanySpecialEvent, applyCompanySpecialEvent,
 } from '../lib/engine.js'
 import { pickTalents, applyTalent } from '../data/talents.js'
 import TalentPicker from '../components/GameStart/TalentPicker.jsx'
@@ -116,6 +117,7 @@ function Game() {
   const [monthOrders, setMonthOrders] = useState([])
   const [pendingStrike, setPendingStrike] = useState(null)
   const [showGeneralConfirm, setShowGeneralConfirm] = useState(false)
+  const [pendingSpecial, setPendingSpecial] = useState(null)
   const [analysis, setAnalysis] = useState(null)
   const [wrongStreak, setWrongStreak] = useState(0)
   const [pendingTalent, setPendingTalent] = useState(null) // { picks, year, isNewGame? }
@@ -575,6 +577,14 @@ function Game() {
       setPendingTalent({ picks: tp2.picks, freePicks: tp2.freePicks, freeSlots: tp2.freeSlots, year: s.year })
     }
     if (s.pendingStrike) setPendingStrike({ month: s.month })
+    // 公司专属事件：月末触发
+    if (!s.monthSpecialEvent?.handled) {
+      const special = pickCompanySpecialEvent(s)
+      if (special) {
+        setPendingSpecial({ event: special, sim: clone(s) })
+        return // 跳过 nextStep，等待玩家选择
+      }
+    }
     let msg = `第${s.month}月结账：折旧+计息${settle.penalized ? `，罚款¥${settle.penalized}万` : ''}`
     if (extras.events && extras.events.length) {
       msg += '；' + extras.events.map((e) => `${e.title}¥${fmtW(e.amount)}万`).join('，')
@@ -833,6 +843,54 @@ const clone = (s) => {
       <>
         <Toast message={toast} onClose={() => setToast('')} />
         <GeneralConfirm onConfirm={requestGeneral} onCancel={() => setShowGeneralConfirm(false)} />
+      </>
+    )
+  }
+
+  if (pendingSpecial) {
+    const handleSpecialChoice = (choice) => {
+      const s = pendingSpecial.sim
+      const result = applyCompanySpecialEvent(s, choice)
+      if (result.success) {
+        setSim(s)
+        s.monthSpecialEvent = { ...s.monthSpecialEvent, handled: true }
+        setPendingSpecial(null)
+        setToast(`🎯 ${result.message}`)
+        persist(s, coId, diffId, chapterIdx, stepIdx, false)
+        nextStep()
+      } else {
+        setToast(`❌ ${result.message || '操作失败'}`)
+      }
+    }
+    return (
+      <>
+        <Toast message={toast} onClose={() => setToast('')} />
+        <div className="page fade-in">
+          <div className="card" style={{ borderLeft: '5px solid var(--primary)', background: '#F0F9FF', marginBottom: 16 }}>
+            <div style={{ fontWeight: 800, color: 'var(--primary-deep)', fontSize: 16 }}>
+              {pendingSpecial.event.emoji} {pendingSpecial.event.title}
+            </div>
+            <div style={{ marginTop: 8, lineHeight: 1.7, color: '#374151' }}>
+              {pendingSpecial.event.desc}
+            </div>
+            <div style={{ marginTop: 12, padding: 12, background: '#EEF2FF', borderRadius: 8, fontSize: 13, color: '#4338CA' }}>
+              💡 {pendingSpecial.event.teach}
+            </div>
+            <div style={{ marginTop: 16 }}>
+              {pendingSpecial.event.choices.map((c, i) => (
+                <button
+                  key={i}
+                  className={`btn ${c.recommended ? 'btn-primary' : 'btn-ghost'}`}
+                  style={{ width: '100%', marginBottom: 8 }}
+                  onClick={() => handleSpecialChoice(c)}
+                >
+                  {c.label}
+                  {c.recommended && <span style={{ marginLeft: 8, color: '#10B981' }}>✓ 推荐</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </>
     )
   }
