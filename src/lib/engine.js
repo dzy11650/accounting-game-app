@@ -585,6 +585,11 @@ export function monthEnd(state, opts = {}) {
   taxAudit(state, m)
   // 持续经营：每年末检测邪道爆雷（延迟多年）
   maybeEvilBlowup(state, m)
+  // 公司专属事件：为各公司挂载可交互的月末专属动作
+  if (!state.monthSpecialEvent) {
+    const special = pickCompanySpecialEvent(state)
+    if (special) state.monthSpecialEvent = { id: special.id, handled: false }
+  }
 
   return state
 }
@@ -1542,5 +1547,195 @@ export function ipoFunding(state, totalAmount, faceValuePerShare = 1, shares = 1
     amount: totalAmountW,
     faceTotal,
     premium,
+  }
+}
+
+// ============ 公司专属月末事件 ============
+
+/**
+ * 按公司类型返回当月专属事件（若存在）
+ * 只在特定月份/条件下触发，避免每月都出现
+ */
+export function pickCompanySpecialEvent(state) {
+  const coId = state.co?.id
+  const month = state.month
+  
+  // 贸易：应收账款账龄 → 坏账准备（第3、6、9、12月触发）
+  if (coId === 'trade' && month > 0 && month % 3 === 0) {
+    const ar = state.balances['应收账款'] || 0
+    if (ar > 0) {
+      return {
+        id: 'trade_badDebt',
+        title: '应收账款账龄分析',
+        emoji: '📊',
+        desc: `期末应收账款¥${fmtW(ar)}万，建议计提5%坏账准备。`,
+        teach: '坏账准备是资产备抵科目，反映估计无法收回的账款。计提时：借 信用减值损失 / 贷 坏账准备。',
+        choices: [
+          { label: '计提5%坏账准备', action: { type: 'special_badDebt', ratio: 0.05 }, recommended: true },
+          { label: '不计提', action: { type: 'special_skipBadDebt' } },
+        ]
+      }
+    }
+  }
+  
+  // 奶茶店：会员卡充值（合同负债）（第2、5、8、11月触发）
+  if (coId === 'shop' && month > 0 && month % 3 === 2) {
+    return {
+      id: 'shop_membership',
+      title: '会员卡充值活动',
+      emoji: '💳',
+      desc: '顾客充值会员卡¥2万，但当月尚未消费。这笔钱不能立即确认为收入。',
+      teach: '预收的会员费属于"合同负债"，实际消费时再逐笔转入收入。这体现了权责发生制：钱到了≠收入确认。',
+      choices: [
+        { label: '确认为合同负债', action: { type: 'special_membership' }, recommended: true },
+      ]
+    }
+  }
+  
+  // 科技：SaaS年费客户（预收一年订阅费）（第1、4、7、10月触发）
+  if (coId === 'tech' && month > 0 && month % 3 === 1) {
+    return {
+      id: 'tech_saas',
+      title: 'SaaS年费客户签约',
+      emoji: '📅',
+      desc: '一位客户签下1年期SaaS合同，一次性支付年费¥6万。',
+      teach: '收到年费时，先记"合同负债"，然后每月确认1/12的收入（¥0.5万/月）。这避免了收入集中确认导致的利润波动。',
+      choices: [
+        { label: '逐月确认收入', action: { type: 'special_saas', total: 6, months: 12 }, recommended: true },
+      ]
+    }
+  }
+  
+  // 工厂：原材料涨价（第2、5、8、11月触发）
+  if (coId === 'factory' && month > 0 && month % 3 === 2) {
+    const eventMult = (state.diffEcon && state.diffEcon.eventMult) || 1
+    if (eventMult >= 1 || Math.random() < 0.3) {
+      return {
+        id: 'factory_materialSpike',
+        title: '原材料价格波动',
+        emoji: '📈',
+        desc: '上游原材料供应商通知：下月起原材料价格上涨约20%。是否现在批量囤货？',
+        teach: '批量采购可以锁定成本，但会占用现金流并增加存货持有成本。这是典型的"成本管控 vs 现金流"权衡。',
+        choices: [
+          { label: '批量囤货（锁定成本）', action: { type: 'special_stockpile', factor: 1.5 } },
+          { label: '按需采购', action: { type: 'special_normalPurchase' }, recommended: true },
+        ]
+      }
+    }
+  }
+  
+  // 上市：宣告分红（第6、12月触发）
+  if (coId === 'listed' && month > 0 && month % 6 === 0) {
+    const profit = state.balances['本年利润'] || 0
+    if (profit > 0) {
+      return {
+        id: 'listed_dividend',
+        title: '股东会分红决策',
+        emoji: '💰',
+        desc: `本年度利润¥${fmtW(profit)}万，股东会讨论是否分红？`,
+        teach: '上市公司需要平衡股东回报与公司扩张。分红减少现金但提升股价；留存利润用于再投资。分红需代扣20%个税。',
+        choices: [
+          { label: '分红30%', action: { type: 'special_dividend', ratio: 0.3 }, recommended: true },
+          { label: '分红50%', action: { type: 'special_dividend', ratio: 0.5 } },
+          { label: '不分红（利润留存）', action: { type: 'special_noDividend' } },
+        ]
+      }
+    }
+  }
+  
+  return null
+}
+
+/**
+ * 处理公司专属事件的会计分录
+ */
+export function applyCompanySpecialEvent(state, choice) {
+  const coId = state.co?.id
+  const action = choice?.action
+  
+  if (!action) return { success: false, message: '未选择操作' }
+  
+  switch (action.type) {
+    case 'special_badDebt': {
+      const ar = state.balances['应收账款'] || 0
+      const provision = +(ar * (action.ratio || 0.05)).toFixed(2)
+      if (provision <= 0) return { success: false, message: '应收账款为0，无需计提' }
+      const entries = [
+        { side: 'debit', account: '信用减值损失', amount: provision },
+        { side: 'credit', account: '坏账准备', amount: provision },
+      ]
+      applyBusiness(state, entries, `计提坏账准备${Math.round((action.ratio || 0.05) * 100)}%`, state.month)
+      return { success: true, message: `✓ 已计提坏账准备¥${fmtW(provision)}万`, entries }
+    }
+    
+    case 'special_skipBadDebt': {
+      return { success: true, message: '未计提坏账准备（审计可能要求补提）' }
+    }
+    
+    case 'special_membership': {
+      const amount = 2 // 万元
+      const entries = [
+        { side: 'debit', account: '银行存款', amount },
+        { side: 'credit', account: '合同负债-会员费', amount },
+      ]
+      applyBusiness(state, entries, `收到会员卡充值`, state.month)
+      state.membershipBalance = (state.membershipBalance || 0) + amount
+      return { success: true, message: `✓ 收到会员卡充值¥${fmtW(amount)}万，记入合同负债`, entries }
+    }
+    
+    case 'special_saas': {
+      const total = action.total || 6
+      const months = action.months || 12
+      const monthly = +(total / months).toFixed(2)
+      const entries = [
+        { side: 'debit', account: '银行存款', amount: total },
+        { side: 'credit', account: '合同负债-SaaS年费', amount: total },
+      ]
+      applyBusiness(state, entries, `收到SaaS年费`, state.month)
+      state.saasContract = { total, months, monthly, recognized: 0 }
+      return { success: true, message: `✓ 收到SaaS年费¥${fmtW(total)}万，将在${months}个月内逐月确认收入（¥${fmtW(monthly)}万/月）`, entries }
+    }
+    
+    case 'special_stockpile': {
+      const factor = action.factor || 1.5
+      const normalCost = (state.co?.economics?.dealSize || 2) * (state.scale || 1)
+      const stockpileCost = +(normalCost * factor).toFixed(2)
+      const entries = [
+        { side: 'debit', account: '原材料', amount: stockpileCost },
+        { side: 'credit', account: '银行存款', amount: stockpileCost },
+      ]
+      applyBusiness(state, entries, `批量囤货原材料`, state.month)
+      state.eventBuff.stockpiled = stockpileCost
+      return { success: true, message: `✓ 批量囤货¥${fmtW(stockpileCost)}万原材料，锁定成本`, entries }
+    }
+    
+    case 'special_normalPurchase': {
+      return { success: true, message: '保持按需采购策略' }
+    }
+    
+    case 'special_dividend': {
+      const ratio = action.ratio || 0.3
+      const profit = state.balances['本年利润'] || 0
+      const div = +(profit * ratio).toFixed(2)
+      const tax = +(div * 0.2).toFixed(2)
+      const net = +(div - tax).toFixed(2)
+      const entries = [
+        { side: 'debit', account: '利润分配-应付股利', amount: div },
+        { side: 'credit', account: '应付股利', amount: div },
+        { side: 'debit', account: '应付股利', amount: div },
+        { side: 'credit', account: '银行存款', amount: net },
+        { side: 'credit', account: '应交税费-个人所得税', amount: tax },
+      ]
+      applyBusiness(state, entries, `宣告并支付分红${Math.round(ratio * 100)}%`, state.month)
+      state.totalDividend = +(state.totalDividend || 0) + net
+      return { success: true, message: `✓ 分红¥${fmtW(net)}万（含税¥${fmtW(div)}万，代扣个税¥${fmtW(tax)}万）`, entries }
+    }
+    
+    case 'special_noDividend': {
+      return { success: true, message: '利润留存公司，用于扩张或储备' }
+    }
+    
+    default:
+      return { success: false, message: '未知专属事件类型' }
   }
 }
