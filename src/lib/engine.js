@@ -286,6 +286,65 @@ export function vatOnPurchaseForFactory(state, purAmt, onCredit) {
   return { entries: [...debit, ...credit], vat }
 }
 
+// ============ 科技公司：研发支出会计处理 ============
+// 研发支出-材料：采购时从银行存款转入，月末需决定费用化还是资本化
+
+/**
+ * 研发费用化：将研发支出-材料转入研发费用（当期损益）
+ * @param {object} state 游戏状态
+ * @param {number} amount 金额（万元）
+ */
+export function expenseRnD(state, amount) {
+  const co = state.co
+  if (!co || co.id !== 'tech') return null
+  const amt = +amount.toFixed(1)
+  // 借：研发费用  贷：研发支出-材料
+  const entries = [
+    { side: 'debit', account: '研发费用', amount: amt },
+    { side: 'credit', account: '研发支出-材料', amount: amt },
+  ]
+  applyBusiness(state, entries, `研发费用化¥${amt}万`, state.month)
+  return { success: true, entries, amount: amt, desc: `研发费用化¥${amt}万（进当期损益）` }
+}
+
+/**
+ * 研发资本化：将研发支出-材料转入无形资产-软件
+ * @param {object} state 游戏状态
+ * @param {number} amount 金额（万元）
+ * @param {number} years 摊销年限（默认10年）
+ */
+export function capitalizeRnD(state, amount, years = 10) {
+  const co = state.co
+  if (!co || co.id !== 'tech') return null
+  const amt = +amount.toFixed(1)
+  // 借：无形资产-软件  贷：研发支出-材料
+  const entries = [
+    { side: 'debit', account: '无形资产-软件', amount: amt },
+    { side: 'credit', account: '研发支出-材料', amount: amt },
+  ]
+  applyBusiness(state, entries, `研发资本化¥${amt}万`, state.month)
+  // 记录无形资产原值和摊销年限，供后续摊销使用
+  if (!state.rndIntangible) state.rndIntangible = []
+  state.rndIntangible.push({ amount: amt, years, monthlyAmort: +(amt / years / 12).toFixed(2), since: state.month })
+  return { success: true, entries, amount: amt, desc: `研发资本化¥${amt}万（转入无形资产，分${years}年摊销）` }
+}
+
+/**
+ * 无形资产摊销：按月计提累计摊销
+ * @param {object} state 游戏状态
+ * @param {number} amount 月摊销额（万元）
+ */
+export function amortizeRnD(state, amount) {
+  const amt = +amount.toFixed(2)
+  // 借：管理费用-摊销  贷：累计摊销
+  const entries = [
+    { side: 'debit', account: '管理费用-摊销', amount: amt },
+    { side: 'credit', account: '累计摊销', amount: amt },
+  ]
+  applyBusiness(state, entries, `无形资产摊销¥${amt}万`, state.month)
+  return { success: true, entries, amount: amt, desc: `无形资产摊销¥${amt}万` }
+}
+
 // 年销售额超阈值 → 强制转为一般纳税人（真实税法规定）
 export function maybeForceGeneral(state) {
   if (state.taxType === 'small' && state.cumSales > TAX.FORCE_THRESHOLD) {
