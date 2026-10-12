@@ -2,11 +2,12 @@ import { useNavigate } from 'react-router-dom'
 import { useUser } from '../store/UserContext.jsx'
 import { COMPANIES } from '../data/companies.js'
 import { TIERS } from '../data/tiers.js'
+import { BADGES } from '../data/badges.js'
 
 export default function Home() {
   const navigate = useNavigate()
   const { state } = useUser()
-  const badgePct = Math.round((state.badges.length / 7) * 100)
+  const badgePct = Math.round((state.badges.length / BADGES.length) * 100)
 
   return (
     <div className="page fade-in">
