@@ -93,10 +93,19 @@ export const COMPANIES = [
       { side: 'debit', account: '原材料', amount: amt },
       { side: 'credit', account: '银行存款', amount: amt },
     ]),
-    // 工厂：生产领料
+    // 工厂：生产领料（原材料 → 生产成本）
     produce: (amt) => ([
       { side: 'debit', account: '生产成本', amount: amt },
       { side: 'credit', account: '原材料', amount: amt },
+    ]),
+    // 工厂：完工结转（生产成本 → 库存商品）
+    complete: (amt) => ([
+      { side: 'debit', account: '库存商品', amount: amt },
+      { side: 'credit', account: '生产成本', amount: amt },
+    ]),
+    costOfSale: (amt) => ([
+      { side: 'debit', account: '主营业务成本', amount: amt },
+      { side: 'credit', account: '库存商品', amount: amt },
     ]),
     costOfSale: (amt) => ([
       { side: 'debit', account: '主营业务成本', amount: amt },
