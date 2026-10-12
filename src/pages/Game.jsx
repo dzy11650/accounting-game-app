@@ -13,6 +13,7 @@ import {
   genOrder, fulfillOrder, trackChoice, decisionInsights, endOfMonthExtras,
   scoreMetrics, overallStars, MILESTONES, checkMilestones,
   analyzeDecision, financialSnapshot, complianceNow, checkProcessBadges,
+  vatOnPurchaseForFactory,
 } from '../lib/engine.js'
 import { pickTalents, applyTalent } from '../data/talents.js'
 import TalentPicker from '../components/GameStart/TalentPicker.jsx'
@@ -127,7 +128,7 @@ function Game() {
   useEffect(() => {
     const selfModeNow = diff.selfEntry && step?.options?.[0]?.action
     const curActionNow = step?.options?.[0]?.action
-    const entryActionTypes = ['rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary']
+    const entryActionTypes = ['rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary', 'produce', 'complete']
     const isEntryActionNow = curActionNow && entryActionTypes.includes(curActionNow.type)
     if (selfModeNow && isEntryActionNow && sim && co) setBrief(computeBrief(sim, curActionNow, co, diff))
     else setBrief(null)
@@ -221,19 +222,43 @@ function Game() {
     } else if (action.type === 'purchase') {
       const purchaseFactor = 1 + (s.eventBuff?.purchaseUp || 0) - (s.eventBuff?.purchaseDown || 0)
       const a = overrideAmt != null ? overrideAmt : dealAmt(eco.dealSize * scale * boost * Math.max(0.5, purchaseFactor), true)
-      const res = vatOnPurchase(s, a, false)
-      desc = `进货¥${a}万${s.taxType === 'general' ? `（进项税¥${res.vat}万可抵扣）` : ''}`
+      // 工厂采购进"原材料"，其他公司进"库存商品"
+      const isFactory = co.id === 'factory'
+      const res = isFactory
+        ? vatOnPurchaseForFactory(s, a, false)
+        : vatOnPurchase(s, a, false)
+      desc = `进货¥${a}万${s.taxType === 'general' ? `（进项税¥${res.vat}万可抵扣）` : ''}${isFactory ? ' → 原材料' : ' → 库存商品'}`
       entries = res.entries; expected = res.entries
-      s.balances['库存商品'] = (s.balances['库存商品'] || 0) + a
+      s.balances[isFactory ? '原材料' : '库存商品'] = (s.balances[isFactory ? '原材料' : '库存商品'] || 0) + a
     } else if (action.type === 'purchaseCredit') {
       const purchaseFactor = 1 + (s.eventBuff?.purchaseUp || 0) - (s.eventBuff?.purchaseDown || 0)
       const a = overrideAmt != null ? overrideAmt : dealAmt(eco.dealSize * scale * boost * Math.max(0.5, purchaseFactor), true)
-      const res = vatOnPurchase(s, a, true)
-      desc = `赊购¥${a}万${s.taxType === 'general' ? `（进项税¥${res.vat}万可抵扣）` : ''}`
+      const isFactory = co.id === 'factory'
+      const res = isFactory
+        ? vatOnPurchaseForFactory(s, a, true)
+        : vatOnPurchase(s, a, true)
+      desc = `赊购¥${a}万${s.taxType === 'general' ? `（进项税¥${res.vat}万可抵扣）` : ''}${isFactory ? ' → 原材料' : ' → 库存商品'}`
       entries = res.entries; expected = res.entries
-      s.balances['库存商品'] += a; s.balances['应付账款'] += a
+      s.balances[isFactory ? '原材料' : '库存商品'] += a
+      s.balances['应付账款'] += a
       s.payablesDue = s.payablesDue || []
       s.payablesDue.push({ due: s.month + 3, amount: +(a + res.vat).toFixed(2) })
+    } else if (action.type === 'produce') {
+      // 工厂：领料生产（原材料 → 生产成本）
+      const a = overrideAmt != null ? overrideAmt : dealAmt(eco.dealSize * scale * boost * 0.7, true)
+      const entriesProduce = co.produce(a)
+      desc = `领料生产¥${a}万（原材料 → 生产成本）`
+      entries = entriesProduce; expected = entriesProduce
+      s.balances['生产成本'] = (s.balances['生产成本'] || 0) + a
+      s.balances['原材料'] -= a
+    } else if (action.type === 'complete') {
+      // 工厂：完工结转（生产成本 → 库存商品）
+      const a = overrideAmt != null ? overrideAmt : dealAmt(eco.dealSize * scale * boost * 0.65, true)
+      const entriesComplete = co.complete(a)
+      desc = `完工入库¥${a}万（生产成本 → 库存商品）`
+      entries = entriesComplete; expected = entriesComplete
+      s.balances['库存商品'] = (s.balances['库存商品'] || 0) + a
+      s.balances['生产成本'] -= a
     } else if (action.type === 'sale') {
       const a = overrideAmt != null ? overrideAmt : dealAmt(eco.dealSize * scale * boost * (1 + (s.eventBuff?.saleUp || 0)))
       const cost = +(a * (1 - eco.margin * marginMult)).toFixed(1)
@@ -243,7 +268,13 @@ function Game() {
       entries = [...res.entries, ...costE]
       expected = entries
       applyBusiness(s, res.entries, `卖货¥${a}万`)
-      applyBusiness(s, costE, '结转成本'); s.balances['库存商品'] -= cost
+      applyBusiness(s, costE, '结转成本')
+      // 工厂销售时从库存商品结转
+      if (co.id === 'factory') {
+        s.balances['库存商品'] = (s.balances['库存商品'] || 0) - cost
+      } else {
+        s.balances['库存商品'] -= cost
+      }
       desc = `卖货¥${a}万（销项税¥${res.vat}万）`
       s.quarterRevenue = +(s.quarterRevenue || 0) + a
       if (forced) setToast('⚠️ 年销售额超500万，已强制转为一般纳税人！税率13%且可抵扣进项')
