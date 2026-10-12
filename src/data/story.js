@@ -112,21 +112,43 @@ export const STORY = [
           const pn = s?.projectName || ''
           return `供应商：进货啦！现金付还是赊账？${cn}${pe ? `·${pe}${pn}` : ''}常赊购形成"应付账款"。`
         },
-        options: [
-          {
-            label: '现金进货上架',
-            action: { type: 'purchase', amt: 2 },
-            teach: '进货：借 库存商品(或原材料) / 贷 银行存款。商品还在手里，是资产不是费用。',
-          },
-          {
-            label: '赊账进货（形成应付账款）',
-            action: { type: 'purchaseCredit', amt: 2 },
-            teach: '赊购：借 库存商品 / 贷 应付账款。欠别人的钱是负债，到期要还。',
-          },
-        ],
+        options: (s) => {
+          if (s?.co?.id === 'factory') {
+            return [
+              {
+                label: '现金采购原材料',
+                action: { type: 'purchase', amt: 2 },
+                teach: '工厂采购：借 原材料 / 贷 银行存款。原材料是资产，领料生产时才转入"生产成本"。',
+              },
+              {
+                label: '赊账采购原材料（形成应付账款）',
+                action: { type: 'purchaseCredit', amt: 2 },
+                teach: '工厂赊购：借 原材料 / 贷 应付账款。欠供应商的钱，到期要还。',
+              },
+            ]
+          }
+          return [
+            {
+              label: '现金进货上架',
+              action: { type: 'purchase', amt: 2 },
+              teach: '进货：借 库存商品(或原材料) / 贷 银行存款。商品还在手里，是资产不是费用。',
+            },
+            {
+              label: '赊账进货（形成应付账款）',
+              action: { type: 'purchaseCredit', amt: 2 },
+              teach: '赊购：借 库存商品 / 贷 应付账款。欠别人的钱是负债，到期要还。',
+            },
+          ]
+        },
       },
       {
         npc: (s) => {
+          if (s?.co?.id === 'factory') {
+            const pid = s?.projectId
+            const pe = s?.projectEmoji || ''
+            const pn = s?.projectName || ''
+            return `车间主任：原材料已入库，现在要"领料生产"——把原材料投入生产线，成本进入"生产成本"。${pid ? `(${pe}${pn})` : ''}`
+          }
           const cn = s?.co?.name || '公司'
           const pid = s?.projectId
           const cid = s?.co?.id
@@ -139,23 +161,57 @@ export const STORY = [
           if (cid === 'listed') return `客户：${pid === 'finance' ? '金融服务费' : pid === 'infra' ? '工程款' : '连锁零售门店'}结算到账。`
           return `顾客：${pn ? `(${pe}${pn}) ` : ''}成交！扫码支付。`
         },
-        options: [
-          {
-            label: '卖货收款',
-            action: { type: 'sale', amt: 3, cost: 1.2 },
-            teach: '收款：借 银行存款 / 贷 主营业务收入、应交税费。同时系统自动结转成本：借 主营业务成本 / 贷 库存商品。',
-          },
-        ],
+        options: (s) => {
+          if (s?.co?.id === 'factory') {
+            return [
+              {
+                label: '领料生产（原材料→生产成本）',
+                action: { type: 'produce', amt: 1.5 },
+                teach: '生产领料：借 生产成本 / 贷 原材料。原材料投入生产线后变成"在产品"，属于生产成本，还不是库存商品。',
+              },
+              {
+                label: '暂不生产，下月再领料',
+                action: { type: 'skip' },
+                teach: '跳过本月领料，原材料留在仓库，等待下月生产。',
+              },
+            ]
+          }
+          return [
+            {
+              label: '卖货收款',
+              action: { type: 'sale', amt: 3, cost: 1.2 },
+              teach: '收款：借 银行存款 / 贷 主营业务收入、应交税费。同时系统自动结转成本：借 主营业务成本 / 贷 库存商品。',
+            },
+          ]
+        },
       },
       {
-        npc: 'HR：该发工资了，这是"应付职工薪酬"。',
-        options: [
-          {
-            label: '计提并发放工资',
-            action: { type: 'salary', amt: 0.5 },
-            teach: '工资：借 管理费用-工资 / 贷 应付职工薪酬。先计提后发放，体现权责发生制。',
-          },
-        ],
+        npc: (s) => {
+          if (s?.co?.id === 'factory') {
+            const pe = s?.projectEmoji || ''
+            const pn = s?.projectName || ''
+            return `车间主任：产品已完工入库！把生产成本转入"库存商品"，等以后卖掉再结转成本。${pn ? `(${pe}${pn})` : ''}`
+          }
+          return 'HR：该发工资了，这是"应付职工薪酬"。'
+        },
+        options: (s) => {
+          if (s?.co?.id === 'factory') {
+            return [
+              {
+                label: '完工结转（生产成本→库存商品）',
+                action: { type: 'complete', amt: 1.4 },
+                teach: '完工入库：借 库存商品 / 贷 生产成本。产品完工后成本从"生产成本"转入"库存商品"，等待销售时再结转主营业务成本。',
+              },
+            ]
+          }
+          return [
+            {
+              label: '计提并发放工资',
+              action: { type: 'salary', amt: 0.5 },
+              teach: '工资：借 管理费用-工资 / 贷 应付职工薪酬。先计提后发放，体现权责发生制。',
+            },
+          ]
+        },
       },
       {
         npc: (s) => s.co.id === 'tech'
