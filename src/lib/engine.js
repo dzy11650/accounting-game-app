@@ -1501,3 +1501,46 @@ export function analyzeDecision(before, after, action, ctx = {}) {
     alert: cashNeg || debtHigh || loss || snapAfter.compliance <= 40,
   }
 }
+
+// ============ 上市公司：IPO 出资 ============
+/**
+ * IPO 发行股票：借银行存款，贷股本+资本公积-股本溢价
+ * @param {object} state 游戏状态
+ * @param {number} totalAmount 募资总额（万元）
+ * @param {number} faceValuePerShare 每股面值（元），默认1元
+ * @param {number} shares 发行股数（万股）
+ */
+export function ipoFunding(state, totalAmount, faceValuePerShare = 1, shares = 100) {
+  const co = state.co
+  if (!co || co.id !== 'listed') return null
+  
+  const totalAmountW = +totalAmount.toFixed(1)
+  const faceTotal = +((faceValuePerShare * shares) / 10).toFixed(1)  // 转换为万元
+  const premium = +(totalAmountW - faceTotal).toFixed(1)
+  
+  // 更新余额
+  state.balances['银行存款'] = (state.balances['银行存款'] || 0) + totalAmountW
+  state.balances['股本'] = (state.balances['股本'] || 0) + faceTotal
+  state.balances['资本公积-股本溢价'] = (state.balances['资本公积-股本溢价'] || 0) + premium
+  
+  // 生成分录
+  const entries = [
+    { side: 'debit', account: '银行存款', amount: totalAmountW },
+    { side: 'credit', account: '股本', amount: faceTotal },
+  ]
+  if (premium > 0) {
+    entries.push({ side: 'credit', account: '资本公积-股本溢价', amount: premium })
+  }
+  
+  // 记录凭证
+  applyBusiness(state, entries, `IPO发行股票募资`, state.month)
+  
+  return {
+    success: true,
+    message: `IPO成功！募资¥${fmtW(totalAmountW)}万，股本¥${fmtW(faceTotal)}万${premium > 0 ? `，溢价¥${fmtW(premium)}万` : ''}`,
+    entries,
+    amount: totalAmountW,
+    faceTotal,
+    premium,
+  }
+}
