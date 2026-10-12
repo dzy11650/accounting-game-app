@@ -19,7 +19,7 @@ export default function Home() {
             <div className="progress-fill" style={{ width: badgePct + '%', background: '#fff' }} />
           </div>
           <div style={{ fontSize: 12, marginTop: 6, opacity: .95 }}>
-            已获徽章 {state.badges.length}/7 · Lv.{state.level} · 🪙{state.coins}
+            已获徽章 {state.badges.length}/{BADGES.length} · Lv.{state.level} · 🪙{state.coins}
           </div>
         </div>
       </div>
