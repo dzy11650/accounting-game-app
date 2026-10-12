@@ -6,6 +6,21 @@ import { getCompany } from '../data/companies.js'
 // 金额格式化：保留 1 位小数（万元单位），消除浮点尾差如 27.650000000000002
 export const fmtW = (v) => Number((v || 0).toFixed(1)).toFixed(1)
 
+// 兼容 story.js 的 options 数组或函数式 options（按 sim/company 分支）
+export function resolveOptions(step, sim) {
+  const o = step?.options
+  if (Array.isArray(o)) return o
+  if (typeof o === 'function') {
+    try {
+      const result = o(sim)
+      return Array.isArray(result) ? result : []
+    } catch (e) {
+      return []
+    }
+  }
+  return []
+}
+
 const INITIAL_BALANCES = () => ({
   银行存款: 0, 库存现金: 0, 应收账款: 0, 应付账款: 0, 原材料: 0, 库存商品: 0,
   生产成本: 0, 固定资产: 0, 累计折旧: 0, 累计摊销: 0, 无形资产: 0, 研发支出: 0,
