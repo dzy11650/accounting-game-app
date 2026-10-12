@@ -107,23 +107,29 @@ export const STORY = [
     steps: [
       {
         npc: (s) => {
-          const cn = s?.co?.name || '公司'
-          const pe = s?.projectEmoji || ''
-          const pn = s?.projectName || ''
-          return `供应商：进货啦！现金付还是赊账？${cn}${pe ? `·${pe}${pn}` : ''}常赊购形成"应付账款"。`
+          if (s?.co?.id === 'tech') {
+            const pid = s?.projectId
+            const pe = s?.projectEmoji || ''
+            const pn = s?.projectName || ''
+            return `财务导师：研发支出要决定了！${pid ? `(${pe}${pn})` : ''}费用化直接扣利润，资本化分10年摊销。选哪个？`
+          }
+          return '供应商：进货啦！现金付还是赊账？'
         },
         options: (s) => {
-          if (s?.co?.id === 'factory') {
+          if (s?.co?.id === 'tech') {
+            const eco = s.co.economics
+            const amount = +((eco.dealSize * (s.scale || 1)) * 0.8).toFixed(1)
             return [
               {
-                label: '现金采购原材料',
-                action: { type: 'purchase', amt: 2 },
-                teach: '工厂采购：借 原材料 / 贷 银行存款。原材料是资产，领料生产时才转入"生产成本"。',
+                label: `费用化¥${amount}万（当期利润低，核算简单）`,
+                action: { type: 'expenseRnD', amount },
+                teach: '费用化：研发支出全部计入当期管理费用-研发费用，降低当期利润，但无需后续摊销。适合初创期、现金流紧张的企业。',
               },
               {
-                label: '赊账采购原材料（形成应付账款）',
-                action: { type: 'purchaseCredit', amt: 2 },
-                teach: '工厂赊购：借 原材料 / 贷 应付账款。欠供应商的钱，到期要还。',
+                label: `资本化¥${amount}万（利润平滑，分10年摊销）`,
+                action: { type: 'capitalizeRnD', amount, years: 10 },
+                recommended: true,
+                teach: '资本化：研发支出转为无形资产，按月摊销进管理费用-摊销。前期利润更高，但后续每月要摊销。注意：资本化后仍要计提累计摊销。',
               },
             ]
           }
