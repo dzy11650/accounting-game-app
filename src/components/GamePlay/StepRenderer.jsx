@@ -4,8 +4,9 @@
  */
 import React from 'react'
 import EntryForm from './EntryForm.jsx'
+import { resolveOptions } from '../../lib/engine.js'
 
-const ENTRY_ACTION_TYPES = ['rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary']
+const ENTRY_ACTION_TYPES = ['rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary', 'produce', 'complete', 'expenseRnD', 'capitalizeRnD', 'amortizeRnD', 'ipoFunding']
 
 export default function StepRenderer({
   step, diff, sim, brief, entryForm, setEntryForm,
@@ -13,12 +14,13 @@ export default function StepRenderer({
 }) {
   if (!step) return null
 
-  const selfMode = diff?.selfEntry && step?.options?.[0]?.action
-  const curAction = step?.options?.[0]?.action
+  const opts = resolveOptions(step, sim)
+  const selfMode = diff?.selfEntry && opts[0]?.action
+  const curAction = opts[0]?.action
   const isEntryAction = curAction && ENTRY_ACTION_TYPES.includes(curAction.type)
 
   // 纯对话步骤（无选项）
-  if (step.options?.length === 0) {
+  if (opts.length === 0) {
     return (
       <div className="card" style={{ background: '#FFFDF8', borderLeft: '5px solid var(--primary)' }}>
         <div style={{ fontWeight: 700, color: 'var(--primary-deep)', fontSize: 13 }}>
@@ -52,12 +54,12 @@ export default function StepRenderer({
         {showHint && (
           <div style={{ fontSize: 12, color: 'var(--text-soft)', marginBottom: 10, lineHeight: 1.7 }}>
             {step.teach && <div>思路：{step.teach}</div>}
-            {step.options.filter((o) => o.teach).map((o, i) => (
+            {opts.filter((o) => o.teach).map((o, i) => (
               <div key={i} style={{ marginTop: 4 }}>{o.teach}</div>
             ))}
           </div>
         )}
-        {step.options.map((opt, i) => (
+        {opts.map((opt, i) => (
           <div key={i} className="option" style={{ cursor: 'pointer', marginBottom: 8 }} onClick={() => onChoose(opt)}>
             <span className="opt-key">{i + 1}</span>
             <span>{opt.label}</span>
