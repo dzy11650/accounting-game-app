@@ -273,6 +273,19 @@ export function vatOnPurchase(state, purAmt, onCredit) {
   return { entries: [...debit, ...credit], vat }
 }
 
+// 工厂采购专用：进入「原材料」科目
+export function vatOnPurchaseForFactory(state, purAmt, onCredit) {
+  const rate = state.taxType === 'general' ? TAX.VAT_GENERAL : 0
+  const vat = +(purAmt * rate).toFixed(2)
+  state.vatInput = +(state.vatInput + vat).toFixed(2)
+  const debit = [{ side: 'debit', account: '原材料', amount: purAmt }]
+  if (vat > 0) debit.push({ side: 'debit', account: '应交税费-进项', amount: vat })
+  const credit = onCredit
+    ? [{ side: 'credit', account: '应付账款', amount: +(purAmt + vat).toFixed(2) }]
+    : [{ side: 'credit', account: '银行存款', amount: +(purAmt + vat).toFixed(2) }]
+  return { entries: [...debit, ...credit], vat }
+}
+
 // 年销售额超阈值 → 强制转为一般纳税人（真实税法规定）
 export function maybeForceGeneral(state) {
   if (state.taxType === 'small' && state.cumSales > TAX.FORCE_THRESHOLD) {
