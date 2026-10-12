@@ -14,7 +14,7 @@ import {
   scoreMetrics, overallStars, MILESTONES, checkMilestones,
   analyzeDecision, financialSnapshot, complianceNow, checkProcessBadges,
   vatOnPurchaseForFactory, expenseRnD, capitalizeRnD, amortizeRnD, ipoFunding,
-  pickCompanySpecialEvent, applyCompanySpecialEvent,
+  pickCompanySpecialEvent, applyCompanySpecialEvent, resolveOptions,
 } from '../lib/engine.js'
 import { pickTalents, applyTalent } from '../data/talents.js'
 import TalentPicker from '../components/GameStart/TalentPicker.jsx'
@@ -128,8 +128,8 @@ function Game() {
   const co = COMPANIES.find((c) => c.id === coId)
 
   useEffect(() => {
-    const selfModeNow = diff.selfEntry && step?.options?.[0]?.action
-    const curActionNow = step?.options?.[0]?.action
+    const selfModeNow = diff.selfEntry && (resolveOptions(step, sim)?.[0]?.action)
+    const curActionNow = resolveOptions(step, sim)?.[0]?.action
     const entryActionTypes = ['rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary', 'produce', 'complete', 'expenseRnD', 'capitalizeRnD', 'amortizeRnD', 'ipoFunding']
     const isEntryActionNow = curActionNow && entryActionTypes.includes(curActionNow.type)
     if (selfModeNow && isEntryActionNow && sim && co) setBrief(computeBrief(sim, curActionNow, co, diff))
@@ -294,6 +294,10 @@ function Game() {
   }
 
   const runSpecial = (s, a) => {
+    if (a.type === 'skip') {
+      setToast('已跳过本步')
+      return { handled: true, selfContained: false }
+    }
     if (a.type === 'fund') {
       applyFunding(s, a.own)
       const borrow = s.balances['短期借款']
@@ -508,7 +512,7 @@ function Game() {
 
   const submitEntry = () => {
     try {
-      const a = step.options[0]?.action
+      const a = resolveOptions(step, sim)[0]?.action
       if (!a) { nextStep(); return }
       const before = clone(sim)
       const s = clone(sim)
@@ -577,8 +581,8 @@ function Game() {
       setPendingTalent({ picks: tp2.picks, freePicks: tp2.freePicks, freeSlots: tp2.freeSlots, year: s.year })
     }
     if (s.pendingStrike) setPendingStrike({ month: s.month })
-    // 公司专属事件：月末触发
-    if (!s.monthSpecialEvent?.handled) {
+    // 公司专属事件：每月按公司/月份重新判定，避免处理后永久不再触发
+    if (!s.monthSpecialEvent) {
       const special = pickCompanySpecialEvent(s)
       if (special) {
         setPendingSpecial({ event: special, sim: clone(s) })
@@ -853,7 +857,7 @@ const clone = (s) => {
       const result = applyCompanySpecialEvent(s, choice)
       if (result.success) {
         setSim(s)
-        s.monthSpecialEvent = { ...s.monthSpecialEvent, handled: true }
+        s.monthSpecialEvent = null
         setPendingSpecial(null)
         setToast(`🎯 ${result.message}`)
         persist(s, coId, diffId, chapterIdx, stepIdx, false)
