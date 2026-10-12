@@ -178,11 +178,16 @@ export const COMPANIES = [
       { id: 'infra', name: '基建地产', emoji: '🏗️', blurb: '重资产、长周期、借款与预收房款勾稽关系密。', econ: { margin: 0.26, dealSize: 16, rent: 4.5 } },
       { id: 'retail', name: '连锁零售', emoji: '🛍️', blurb: '门店多、流水碎、存货与现金管理网点分散。', econ: { margin: 0.28, dealSize: 12, salary: 9 } },
     ],
-    // 上市专属：发行股票
-    issueStock: (amt) => ([
-      { side: 'debit', account: '银行存款', amount: amt },
-      { side: 'credit', account: '股本', amount: amt },
-    ]),
+    // 上市专属：发行股票（支持面值+溢价）
+    issueStock: (amt, faceValue = 1, totalShares = 100) => {
+      const faceTotal = faceValue * totalShares
+      const premium = amt - faceTotal
+      return [
+        { side: 'debit', account: '银行存款', amount: amt },
+        { side: 'credit', account: '股本', amount: faceTotal },
+        ...(premium > 0 ? [{ side: 'credit', account: '资本公积-股本溢价', amount: premium }] : []),
+      ]
+    },
   },
 ]
 
