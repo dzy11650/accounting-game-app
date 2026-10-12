@@ -30,7 +30,9 @@ export default function TalentPicker({ picks, onSelect, onSkip, title, subtitle 
         {picks.map((t) => {
           const fam = FAMILIES[t.family] || {}
           const rs = RARITY_STYLE[t.rarity] || RARITY_STYLE.common
-          const [open, setOpen] = openLearn[t.id] || false
+          const openState = openLearn[t.id]
+          const open = typeof openState === 'boolean' ? openState : false
+          const setOpen = (v) => setOpenLearn((o) => ({ ...o, [t.id]: typeof v === 'function' ? v(open) : v }))
           return (
             <div key={t.id} style={{ border: rs.border, borderRadius: 12, padding: '12px 14px', background: '#fff' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
