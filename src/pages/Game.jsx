@@ -13,7 +13,7 @@ import {
   genOrder, fulfillOrder, trackChoice, decisionInsights, endOfMonthExtras,
   scoreMetrics, overallStars, MILESTONES, checkMilestones,
   analyzeDecision, financialSnapshot, complianceNow, checkProcessBadges,
-  vatOnPurchaseForFactory, expenseRnD, capitalizeRnD, amortizeRnD,
+  vatOnPurchaseForFactory, expenseRnD, capitalizeRnD, amortizeRnD, ipoFunding,
 } from '../lib/engine.js'
 import { pickTalents, applyTalent } from '../data/talents.js'
 import TalentPicker from '../components/GameStart/TalentPicker.jsx'
@@ -128,7 +128,7 @@ function Game() {
   useEffect(() => {
     const selfModeNow = diff.selfEntry && step?.options?.[0]?.action
     const curActionNow = step?.options?.[0]?.action
-    const entryActionTypes = ['rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary', 'produce', 'complete']
+    const entryActionTypes = ['rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary', 'produce', 'complete', 'expenseRnD', 'capitalizeRnD', 'amortizeRnD', 'ipoFunding']
     const isEntryActionNow = curActionNow && entryActionTypes.includes(curActionNow.type)
     if (selfModeNow && isEntryActionNow && sim && co) setBrief(computeBrief(sim, curActionNow, co, diff))
     else setBrief(null)
@@ -307,6 +307,15 @@ function Game() {
       trackChoice(s, 'taxType', { value: a.tax })
       setToast(`纳税人类型：${a.tax === 'general' ? '一般纳税人（税率13%，可抵扣进项）' : '小规模纳税人（征收率3%，进项不可抵扣）'}`)
       return { handled: true, selfContained: false }
+    }
+    if (a.type === 'ipoFunding') {
+      const result = ipoFunding(s, a.totalAmount, a.faceValue, a.shares)
+      if (result && result.success) {
+        setToast(`🎉 ${result.message}`)
+        trackChoice(s, 'ipo', { totalAmount: result.amount, faceTotal: result.faceTotal, premium: result.premium })
+        return { handled: true, selfContained: false }
+      }
+      return { handled: false }
     }
     if (a.type === 'monthEnd') { doMonthEnd(s); return { handled: true, selfContained: true } }
     if (a.type === 'tax') {
