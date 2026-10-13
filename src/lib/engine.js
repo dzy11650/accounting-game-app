@@ -600,12 +600,53 @@ export function monthEnd(state, opts = {}) {
   taxAudit(state, m)
   // 持续经营：每年末检测邪道爆雷（延迟多年）
   maybeEvilBlowup(state, m)
-  // 公司专属事件：为各公司挂载可交互的月末专属动作
-  if (!state.monthSpecialEvent) {
-    const special = pickCompanySpecialEvent(state)
-    if (special) state.monthSpecialEvent = { id: special.id, handled: false }
+  // 公司专属事件：本月专属决策（例如坏账/预收/囤货）仅在当月处理一次；
+  // 注意不在 monthEnd 里保存 state.monthSpecialEvent，避免跨月误拦截；
+  // 月末处理通过后在应用层 Game.jsx 做 handled 标记即可。
+  const special = pickCompanySpecialEvent(state)
+  if (special) {
+    state.monthSpecialEvent = { id: special.id, desc: special.desc, teach: special.teach, handled: false }
   }
+  deferContractLiabilities(state)
+  resetMonthlySpecialEvent(state)
 
+  return state
+}
+
+// 按月递延合同负债：把已到期的递延收入确认为收入（每月调用一次，月末/结账前）
+// 重置当月特殊事件标记，使下月可再次触发
+export function resetMonthlySpecialEvent(state) {
+  if (state && typeof state === 'object') state.monthSpecialEvent = null
+  return state
+}
+export function deferContractLiabilities(state) {
+  if (!state.co) return state
+  const revenueAccount = state.co.revenueAccount || '主营业务收入'
+  // SaaS / 长期订阅
+  if (state.saasContract && typeof state.saasContract === 'object') {
+    const { total, monthly, recognized } = state.saasContract
+    if (total > 0 && (recognized || 0) < total) {
+      const amt = +(Math.min(monthly || 0, total - (recognized || 0))).toFixed(2)
+      if (amt > 0.001) {
+        applyBusiness(state, [
+          { side: 'debit', account: '合同负债-SaaS年费', amount: amt },
+          { side: 'credit', account: revenueAccount, amount: amt },
+        ], `SaaS年费递延确认¥${fmtW(amt)}万`, state.month)
+        state.saasContract.recognized = +(recognized + amt).toFixed(2)
+      }
+    }
+  }
+  // 会员卡充值（按固定额度或销售比例摊销均可，这里用每月等摊直到清零）
+  if (typeof state.membershipBalance === 'number' && state.membershipBalance > 0.001) {
+    // 取剩余3个月均摊；若已不足一月则一次性清
+    const remainingMonths = Math.max(1, Math.ceil(state.membershipBalance / ((state.membershipBalance && state.membershipBalance.monthly) || 0.5)))
+    const amt = +(state.membershipBalance / remainingMonths).toFixed(2)
+    applyBusiness(state, [
+      { side: 'debit', account: '合同负债-会员费', amount: amt },
+      { side: 'credit', account: revenueAccount, amount: amt },
+    ], `会员卡递延收入¥${fmtW(amt)}万`, state.month)
+    state.membershipBalance = +(state.membershipBalance - amt).toFixed(2)
+  }
   return state
 }
 
@@ -665,7 +706,7 @@ export function loseLife(state) {
 }
 
 export function totalAssets(b) {
-  return +(b['银行存款'] + b['库存现金'] + b['应收账款'] + b['原材料'] + b['库存商品'] +
+  return +(b['银行存款'] + b['库存现金'] + (b['应收账款'] || 0) - (b['坏账准备'] || 0) + b['原材料'] + b['库存商品'] +
     b['生产成本'] + b['固定资产'] - b['累计折旧'] + b['无形资产'] - b['累计摊销'] + b['研发支出'] + b['预付账款']).toFixed(2)
 }
 
@@ -700,7 +741,7 @@ export function buildReports(state) {
   const g = (k) => sumAccount(b, k)
   const assets = [
     { item: '货币资金', value: +(g('银行存款') + g('库存现金')).toFixed(2), side: 'asset' },
-    { item: '应收账款', value: +g('应收账款').toFixed(2), side: 'asset' },
+    { item: '应收账款(净额)', value: +(g('应收账款') - g('坏账准备')).toFixed(2), side: 'asset' },
     { item: '存货(含原材料/库存/在产)', value: +(g('原材料') + g('库存商品') + g('生产成本')).toFixed(2), side: 'asset' },
     { item: '预付账款', value: +g('预付账款').toFixed(2), side: 'asset' },
     { item: '固定资产(净值)', value: +(g('固定资产') - g('累计折旧')).toFixed(2), side: 'asset' },
@@ -713,10 +754,14 @@ export function buildReports(state) {
     { item: '应付职工薪酬', value: +g('应付职工薪酬').toFixed(2), side: 'liability' },
     { item: '应付利息', value: +g('应付利息').toFixed(2), side: 'liability' },
     { item: '应交税费', value: +g('应交税费').toFixed(2), side: 'liability' },
+    { item: '合同负债', value: +(g('合同负债') + g('合同负债-会员费') + g('合同负债-SaaS年费')).toFixed(2), side: 'liability' },
+    { item: '应付股利', value: +g('应付股利').toFixed(2), side: 'liability' },
   ]
   const equity = [
     { item: '实收资本/股本', value: +(g('实收资本') + g('股本')).toFixed(2), side: 'equity' },
+    { item: '资本公积', value: +g('资本公积').toFixed(2), side: 'equity' },
     { item: '本年利润', value: +g('本年利润').toFixed(2), side: 'equity' },
+    { item: '利润分配-应付股利', value: -(g('利润分配-应付股利') || 0).toFixed(2), side: 'equity' },
   ]
   const balance = { type: 'balance', rows: [...assets, ...liabilities, ...equity] }
 
@@ -1736,8 +1781,6 @@ export function applyCompanySpecialEvent(state, choice) {
       const net = +(div - tax).toFixed(2)
       const entries = [
         { side: 'debit', account: '利润分配-应付股利', amount: div },
-        { side: 'credit', account: '应付股利', amount: div },
-        { side: 'debit', account: '应付股利', amount: div },
         { side: 'credit', account: '银行存款', amount: net },
         { side: 'credit', account: '应交税费-个人所得税', amount: tax },
       ]
