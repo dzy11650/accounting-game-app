@@ -1580,7 +1580,8 @@ export function ipoFunding(state, totalAmount, faceValuePerShare = 1, shares = 1
   if (!co || co.id !== 'listed') return null
   
   const totalAmountW = +totalAmount.toFixed(1)
-  const faceTotal = +((faceValuePerShare * shares) / 10).toFixed(1)  // 转换为万元
+  const faceRatio = 0.1
+  const faceTotal = +(totalAmountW * faceRatio).toFixed(1)
   const premium = +(totalAmountW - faceTotal).toFixed(1)
   
   // 更新余额
