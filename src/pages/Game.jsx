@@ -580,9 +580,9 @@ function Game() {
       const tp2 = pickTalents(diffId, Math.random, { metaUnlocked: useUserStateRef.current?.metaUnlockedTalents || [], freeSlots: freeSlots2 })
       setPendingTalent({ picks: tp2.picks, freePicks: tp2.freePicks, freeSlots: tp2.freeSlots, year: s.year })
     }
-    if (s.pendingStrike) setPendingStrike({ month: s.month })
-    // 公司专属事件：每月按公司/月份重新判定，避免处理后永久不再触发
-    if (!s.monthSpecialEvent) {
+  if (s.pendingStrike) setPendingStrike({ month: s.month })
+    // 公司专属事件：每月由 engine 生成 pendingSpecialEvent，UI 层负责弹出与处理
+    if (!s.monthSpecialEvent?.handled) {
       const special = pickCompanySpecialEvent(s)
       if (special) {
         setPendingSpecial({ event: special, sim: clone(s) })
@@ -857,7 +857,7 @@ const clone = (s) => {
       const result = applyCompanySpecialEvent(s, choice)
       if (result.success) {
         setSim(s)
-        s.monthSpecialEvent = null
+        s.monthSpecialEvent = { ...s.monthSpecialEvent, handled: true }
         setPendingSpecial(null)
         setToast(`🎯 ${result.message}`)
         persist(s, coId, diffId, chapterIdx, stepIdx, false)
