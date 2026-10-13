@@ -271,11 +271,12 @@ function Game() {
       expected = entries
       applyBusiness(s, res.entries, `卖货¥${a}万`)
       applyBusiness(s, costE, '结转成本')
-      // 工厂销售时从库存商品结转
-      if (co.id === 'factory') {
-        s.balances['库存商品'] = (s.balances['库存商品'] || 0) - cost
+      // 科技公司订阅制无实物存货，成本直接进损益不动库存商品
+      if (co.id === 'tech') {
+        s.balances['主营业务成本'] = (s.balances['主营业务成本'] || 0) + cost
       } else {
-        s.balances['库存商品'] -= cost
+        s.balances['库存商品'] = (s.balances['库存商品'] || 0) - cost
+
       }
       desc = `卖货¥${a}万（销项税¥${res.vat}万）`
       s.quarterRevenue = +(s.quarterRevenue || 0) + a
@@ -315,7 +316,8 @@ function Game() {
       return { handled: true, selfContained: false }
     }
     if (a.type === 'ipoFunding') {
-      const result = ipoFunding(s, a.totalAmount, a.faceValue, a.shares)
+      const result = ipoFunding(s, a.totalAmount)
+
       if (result && result.success) {
         setToast(`🎉 ${result.message}`)
         trackChoice(s, 'ipo', { totalAmount: result.amount, faceTotal: result.faceTotal, premium: result.premium })
