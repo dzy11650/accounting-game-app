@@ -24,13 +24,14 @@ export const STORY = [
           if (s?.co?.id === 'listed') {
             return [
               {
-                label: '平价发行（面值1元，发行100万股，募资100万）',
-                action: { type: 'ipoFunding', totalAmount: 100, faceValue: 1, shares: 100 },
-                teach: '平价发行：发行价=面值，无股本溢价。股本直接记面值总额，简单但募资规模有限。',
+                label: '平价发行（募资100万，面值100%）',
+                action: { type: 'ipoFunding', totalAmount: 100 },
+                teach: '平价发行：发行价=面值，无股本溢价。股本直接记募资总额，简单但募资规模有限。',
               },
               {
-                label: '溢价发行（面值1元，发行100万股，募资200万）',
-                action: { type: 'ipoFunding', totalAmount: 200, faceValue: 1, shares: 100 },
+                label: '溢价发行（募资200万，面值10%+溢价90%）',
+                action: { type: 'ipoFunding', totalAmount: 200 },
+
                 recommended: true,
                 teach: '溢价发行：发行价>面值，差额计入"资本公积-股本溢价"。这是上市公司最常见的融资方式，既募资又保留面值完整性。',
               },
@@ -153,6 +154,12 @@ export const STORY = [
                 recommended: true,
                 teach: '资本化：研发支出转为无形资产，按月摊销进管理费用-摊销。前期利润更高，但后续每月要摊销。注意：资本化后仍要计提累计摊销。',
               },
+              {
+                label: `采购云资源¥${+(amount * 0.3).toFixed(1)}万（维持基础运营成本）`,
+                action: { type: 'purchase', amt: +(amount * 0.3).toFixed(1) },
+                teach: '科技公司仍需基础IT支出（云服务器、SaaS工具），借 主营业务成本 / 贷 银行存款。这笔费用直接进入当期损益。',
+              },
+
             ]
           }
           return [
@@ -193,6 +200,12 @@ export const STORY = [
           if (s?.co?.id === 'factory') {
             return [
               {
+                label: '卖货收款（产成品→库存商品结转）',
+                action: { type: 'sale', amt: 3, cost: 1.5 },
+                teach: '卖出完工产品：借 银行存款 / 贷 主营业务收入、应交税费。同时结转成本：借 主营业务成本 / 贷 库存商品。这是工厂的主要收入来源。',
+              },
+              {
+
                 label: '领料生产（原材料→生产成本）',
                 action: { type: 'produce', amt: 1.5 },
                 teach: '生产领料：借 生产成本 / 贷 原材料。原材料投入生产线后变成"在产品"，属于生产成本，还不是库存商品。',
@@ -226,6 +239,12 @@ export const STORY = [
           if (s?.co?.id === 'factory') {
             return [
               {
+                label: '计提并发放工资（计入生产成本）',
+                action: { type: 'salary', amt: 0.5 },
+                teach: '工资：借 生产成本-直接人工 / 贷 应付职工薪酬。工厂工资直接计入产品成本，随产品销售结转至主营业务成本。',
+              },
+              {
+
                 label: '完工结转（生产成本→库存商品）',
                 action: { type: 'complete', amt: 1.4 },
                 teach: '完工入库：借 库存商品 / 贷 生产成本。产品完工后成本从"生产成本"转入"库存商品"，等待销售时再结转主营业务成本。',
