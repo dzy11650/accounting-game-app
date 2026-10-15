@@ -106,6 +106,21 @@ cd android
 | 🪟 Windows（Tauri 安装版） | [会计小当家_2.0.4_x64-setup.exe](https://gitee.com/dzy11650/accounting-game-app/releases/download/v2.0.4/%E4%BC%9A%E8%AE%A1%E5%B0%8F%E5%BD%93%E5%AE%B6_2.0.4_x64-setup.exe) | 1.3 MB | NSIS 安装包，安装后从开始菜单/桌面快捷方式启动 |
 
 > 上述安装包均已包含 v2.0.4 全部 bug 修复（非科技公司税务卡死、邪道·不发工资 `evilSalary` 崩溃等），直接下载即为最新正确版本，无需再区分「修复版」。
+## 存档系统
+
+游戏进度通过 `localStorage` 自动存档（键名 `accounting_game_save_v1`），每次关键决策后写入。存档结构带版本号字段（`SAVE_VERSION = 1`），后续若升级存档字段，由 `migrate()` 方法做向后兼容补齐——旧档读入时缺失字段自动补默认值，老档不报错、不丢状态。
+
+存档位置：Web 版为浏览器 `localStorage`，Capacitor 原生 App 与 Electron 桌面版同样落在本地存储；清除浏览器缓存或卸载应用会同步清除存档。
+
+## 游戏截图
+
+将各界面的运行截图放入 `docs/screenshots/` 目录后，按以下格式引用即可：
+
+```markdown
+![主菜单](docs/screenshots/main-menu.png)
+![经营沙盘](docs/screenshots/sandbox.png)
+![财务报表](docs/screenshots/reports.png)
+```
 
 > 所有安装包发布于 Release **[v2.0.4](https://gitee.com/dzy11650/accounting-game-app/releases/tag/v2.0.4)**。
 > Tauri 安装版 / 便携版使用中文文件名，下载时若浏览器提示请正常保存，安装后在开始菜单 / 桌面快捷方式启动。

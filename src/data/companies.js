@@ -107,10 +107,6 @@ export const COMPANIES = [
       { side: 'debit', account: '主营业务成本', amount: amt },
       { side: 'credit', account: '库存商品', amount: amt },
     ]),
-    costOfSale: (amt) => ([
-      { side: 'debit', account: '主营业务成本', amount: amt },
-      { side: 'credit', account: '库存商品', amount: amt },
-    ]),
     revenueAccount: '主营业务收入-产成品',
     costAccount: '主营业务成本',
     // 经营项目

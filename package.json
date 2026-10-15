@@ -9,15 +9,17 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "pack": "npm run build && electron-builder --win nsis dir",
-    "pack:nsis": "npm run build && electron-builder --win nsis",
-    "pack:portable": "npm run build && electron-builder --win portable",
-    "pack:dir": "npm run build && electron-builder --win dir",
+    "pack": "npm run check-fresh && electron-builder --win nsis dir",
+    "pack:nsis": "npm run check-fresh && electron-builder --win nsis",
+    "pack:portable": "npm run check-fresh && electron-builder --win portable",
+    "pack:dir": "npm run check-fresh && electron-builder --win dir",
     "tauri": "tauri",
-    "android:build": "npm run build && npx cap sync android",
+    "android:build": "npm run check-fresh && npx cap sync android",
     "android:open": "npx cap open android",
     "android:run": "npm run build && npx cap sync android && npx cap run android",
-    "test": "node --test src/__tests__/*.test.js"
+    "test": "node --test src/__tests__/*.test.js",
+    "lint": "eslint src/",
+    "check-fresh": "node scripts/check-fresh.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
@@ -28,10 +30,14 @@
     "react-router-dom": "^6.26.2"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tauri-apps/cli": "^2.11.4",
     "@vitejs/plugin-react": "^4.3.1",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
+    "eslint": "^8.57.1",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^17.13.0",
     "vite": "^5.4.8"
   },
   "allowScripts": {

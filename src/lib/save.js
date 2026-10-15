@@ -28,7 +28,9 @@ export function writeSave(snap) {
 }
 
 export function clearSave() {
-  try { localStorage.removeItem(SAVE_KEY) } catch (e) {}
+  try { localStorage.removeItem(SAVE_KEY) } catch (e) {
+    /* localStorage 不可用时静默忽略 */
+  }
 }
 
 /**

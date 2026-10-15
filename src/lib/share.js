@@ -31,7 +31,9 @@ export async function copyText(text) {
       await navigator.clipboard.writeText(text)
       return { ok: true }
     }
-  } catch (e) {}
+  } catch (e) {
+    /* clipboard API 不可用或用户拒绝，走降级 */
+  }
   // 降级：textarea 方式
   try {
     const ta = document.createElement('textarea')

@@ -22,6 +22,7 @@ import { loadSave, writeSave, clearSave } from '../lib/save.js'
 import { GameRuntimeError } from '../lib/errors.js'
 import EntryAnimation from '../components/EntryAnimation.jsx'
 import Toast from '../components/Toast.jsx'
+import KnowledgeCard from '../components/KnowledgeCard.jsx'
 import CompanySelector from '../components/GameStart/CompanySelector.jsx'
 import ProjectSelector from '../components/GameStart/ProjectSelector.jsx'
 import LoadPrompt from '../components/GameStart/LoadPrompt.jsx'
@@ -121,6 +122,7 @@ function Game() {
   const [analysis, setAnalysis] = useState(null)
   const [wrongStreak, setWrongStreak] = useState(0)
   const [pendingTalent, setPendingTalent] = useState(null) // { picks, year, isNewGame? }
+  const [knowledgeCard, setKnowledgeCard] = useState(null) // { title, content }
 
   const chapter = STORY[chapterIdx]
   const step = chapter?.steps[stepIdx]
@@ -332,12 +334,15 @@ function Game() {
       if (plans.includes('rndDeduction') && co.id !== 'tech') {
         plans = plans.filter((p) => p !== 'rndDeduction')
         skippedRnd = true
+        setKnowledgeCard({
+          title: '💡 研发费用加计扣除',
+          content: `「研发费用加计扣除」是国家对科技型企业的税收优惠政策：每花 1 元研发，税前可扣除 2 元。${co.name}作为${co.id === 'retail' ? '连锁零售' : '工厂'}企业，没有研发活动，因此不适用此政策。只有选择「科技公司」时才能享受这项红利。`,
+        })
       }
       const res = settleTax(s, plans)
       const planNote = plans.length ? '（已做合法筹划，少缴税✓）' : ''
-      const skipNote = skippedRnd ? ` · 已自动剔除「研发费用加计扣除」（${co.name}非科技型企业无适用研发活动）` : ''
       s.usedTaxPlans = [...new Set([...(s.usedTaxPlans || []), ...plans])]
-      setToast(`缴税：增值税¥${res.vatPayable}万 + 企业所得税¥${res.cit}万（${res.taxType === 'general' ? '一般纳税人' : '小规模'}）${res.forced ? ' · 已强制转一般纳税人' : ''}${planNote}${skipNote}`)
+      setToast(`缴税：增值税¥${res.vatPayable}万 + 企业所得税¥${res.cit}万（${res.taxType === 'general' ? '一般纳税人' : '小规模'}）${res.forced ? ' · 已强制转一般纳税人' : ''}${planNote}`)
       return { handled: true, selfContained: false }
     }
     if (a.type === 'dividend') {
@@ -911,6 +916,14 @@ const clone = (s) => {
         </div>
       )}
       <Toast message={toast} onClose={() => setToast('')} />
+
+      {knowledgeCard && (
+        <KnowledgeCard
+          title={knowledgeCard.title}
+          content={knowledgeCard.content}
+          onClose={() => setKnowledgeCard(null)}
+        />
+      )}
 
       <GameStateBar sim={sim} chapter={chapter} />
 
