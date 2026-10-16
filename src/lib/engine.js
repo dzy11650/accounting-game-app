@@ -1354,8 +1354,8 @@ export function fulfillOrder(state, order) {
     )
   }
   applyBusiness(state, entries, `接单销售：${order.customer}`)
-  // 结转成本
-  applyBusiness(state, co.costOfSale(costAmt), `结转成本：${order.customer}`)
+  // 结转成本（防御：co.costOfSale 可能未定义，如科技订阅制 / 金融机构）
+  applyBusiness(state, co.costOfSale ? co.costOfSale(costAmt) : [], `结转成本：${order.customer}`)
   // 赊销账期登记（到期自动回款）
   if (order.credit > 0) {
     state.receivables = state.receivables || []

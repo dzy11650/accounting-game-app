@@ -56,10 +56,8 @@ export const COMPANIES = [
       { side: 'debit', account: '研发支出-材料', amount: amt },
       { side: 'credit', account: '银行存款', amount: amt },
     ]),
-    costOfSale: (amt) => ([
-      { side: 'debit', account: '主营业务成本', amount: amt },
-      { side: 'credit', account: '库存商品', amount: amt },
-    ]),
+    // 科技公司订阅制：无存货结转，costOfSale 返回空，sale 分支由 applyBusiness(sale) 收成本
+    costOfSale: () => [],
     revenueAccount: '主营业务收入-订阅',
     costAccount: '主营业务成本',
     // 经营项目

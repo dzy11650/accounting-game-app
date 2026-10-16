@@ -284,7 +284,8 @@ function Game() {
       const cost = +(a * (1 - eco.margin * marginMult)).toFixed(1)
       const res = vatOnSale(s, a, co.revenueAccount)
       const forced = maybeForceGeneral(s)
-      const costE = co.costOfSale(cost)
+      // 防御性调用：co.costOfSale 可能为 undefined（如科技订阅制无存货结转时返回 []）
+      const costE = (co.costOfSale ? co.costOfSale(cost) : [])
       entries = [...res.entries, ...costE]
       expected = entries
       applyBusiness(s, res.entries, `卖货¥${a}万`)
