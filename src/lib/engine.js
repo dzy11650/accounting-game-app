@@ -36,6 +36,8 @@ const NATURE = {
   主营业务成本: true, 管理费用: true, 财务费用: true, 研发费用: true, 所得税费用: true,
   短期借款: false, 应付账款: false, 应付职工薪酬: false, 应付利息: false, 应交税费: false,
   实收资本: false, 股本: false, 本年利润: false, 累计折旧: false, 累计摊销: false, 主营业务收入: false,
+  // P0 修复：以下科目贷增借减（负债/备抵/权益类），natureOf 按父科目前缀命中
+  合同负债: false, 资本公积: false, 坏账准备: false, 应付股利: false, 利润分配: true,
 }
 function natureOf(account) {
   if (NATURE[account] !== undefined) return NATURE[account]
@@ -64,6 +66,7 @@ const PNL_SUBJECTS_TO_RESET = [
   '管理费用',
   '财务费用',
   '研发费用',
+  '信用减值损失',
   '营业外收入-补贴',
 ]
 
@@ -102,6 +105,7 @@ function pnlCat(account) {
   if (account === '财务费用' || account.startsWith('财务费用')) return 'fin'
   if (account === '研发费用' || account.startsWith('研发费用')) return 'rd'
   if (account === '所得税费用' || account.startsWith('所得税费用')) return 'tax'
+  if (account === '信用减值损失' || account.startsWith('信用减值损失')) return 'impair'
   return null
 }
 
@@ -467,6 +471,8 @@ export function declareDividend(state, ratio = 0.3) {
   ]
   applyBusiness(state, entries, `股东分红（${Math.round(ratio * 100)}%）`, state.month)
   state.totalDividend = +(state.totalDividend || 0) + net
+  // P1 修复：累加实际流出现金的分红净额，供现金流表"分配利润支付的现金"勾稽
+  state.dividendPaid = +((state.dividendPaid || 0) + net).toFixed(2)
   return { ok: true, amount: net, gross: div, tax: divTax, msg: `分红 ${fmtW(net)}万（代扣个税 ${fmtW(divTax)}万）` }
 }
 
@@ -544,12 +550,19 @@ export function monthEnd(state, opts = {}) {
   }
   applyBusiness(state, newEntries, `第${m}月末结账`, m)
 
+  // P0 修复：合同负债递延必须在「结转损益」之前执行，
+  // 否则 deferContractLiabilities 产生的递延收入（主营业务收入-订阅/会员费）
+  // 落在结转之后，永远不会被计入「本年利润」，导致恒等式失衡（gap = 当月递延额）。
+  deferContractLiabilities(state)
+
   // 结转损益：将本月损益科目余额转入「本年利润」，并清零损益科目（避免重复累计）
   const rev = sumAccount(state.balances, '主营业务收入')
   // 注意：所得税费用不计入此处 costs —— 企业所得税由 settleTax() 单独计提并直接结转「本年利润」（见 settleTax 内"结转所得税费用至本年利润"）。
   // 若此处再把所得税费用算进 costs 并 += monthProfit，会导致所得税被重复扣除一次（本月 settleTax 扣一次，下月 monthEnd 又把上月 settleTax 记的所得税费用算进 costs 再扣一次）。
   const costs = sumAccount(state.balances, '主营业务成本') + sumAccount(state.balances, '管理费用') +
-    sumAccount(state.balances, '财务费用') + sumAccount(state.balances, '研发费用')
+    sumAccount(state.balances, '财务费用') + sumAccount(state.balances, '研发费用') +
+    // P0 补漏：信用减值损失（坏账计提）也是损益类费用，须一并结转至本年利润，否则恒等式失衡
+    sumAccount(state.balances, '信用减值损失')
   const monthProfit = +(rev - costs).toFixed(2)
   state.balances['本年利润'] = +((state.balances['本年利润'] || 0) + monthProfit).toFixed(2)
   // 累计损益追踪：已改由 applyBusiness 实时累加至 state.cum（见 pnlCat），此处无需重复累加
@@ -600,15 +613,8 @@ export function monthEnd(state, opts = {}) {
   taxAudit(state, m)
   // 持续经营：每年末检测邪道爆雷（延迟多年）
   maybeEvilBlowup(state, m)
-  // 公司专属事件：本月专属决策（例如坏账/预收/囤货）仅在当月处理一次；
-  // 注意不在 monthEnd 里保存 state.monthSpecialEvent，避免跨月误拦截；
-  // 月末处理通过后在应用层 Game.jsx 做 handled 标记即可。
-  const special = pickCompanySpecialEvent(state)
-  if (special) {
-    state.monthSpecialEvent = { id: special.id, desc: special.desc, teach: special.teach, handled: false }
-  }
-  deferContractLiabilities(state)
-  resetMonthlySpecialEvent(state)
+  // 公司专属事件：由应用层（Game.jsx）在月初调用 pickCompanySpecialEvent 获取并处理，
+  // 不在 monthEnd 里写入 monthSpecialEvent（否则会被下方的 reset 立即清空，形成死代码）。
 
   return state
 }
@@ -637,9 +643,11 @@ export function deferContractLiabilities(state) {
     }
   }
   // 会员卡充值（按固定额度或销售比例摊销均可，这里用每月等摊直到清零）
+  // P1 修复：membershipBalance 在 API 推送版中被定义为 number（余额），不能取 .monthly 属性
+  // 使用固定的每月摊销额 0.5 万（与原代码 || 0.5 兜底值一致，避免 NaN）
   if (typeof state.membershipBalance === 'number' && state.membershipBalance > 0.001) {
-    // 取剩余3个月均摊；若已不足一月则一次性清
-    const remainingMonths = Math.max(1, Math.ceil(state.membershipBalance / ((state.membershipBalance && state.membershipBalance.monthly) || 0.5)))
+    const monthlyAmt = 0.5
+    const remainingMonths = Math.max(1, Math.ceil(state.membershipBalance / monthlyAmt))
     const amt = +(state.membershipBalance / remainingMonths).toFixed(2)
     applyBusiness(state, [
       { side: 'debit', account: '合同负债-会员费', amount: amt },
@@ -1583,13 +1591,8 @@ export function ipoFunding(state, totalAmount, faceValuePerShare = 1, shares = 1
   const faceRatio = 0.1
   const faceTotal = +(totalAmountW * faceRatio).toFixed(1)
   const premium = +(totalAmountW - faceTotal).toFixed(1)
-  
-  // 更新余额
-  state.balances['银行存款'] = (state.balances['银行存款'] || 0) + totalAmountW
-  state.balances['股本'] = (state.balances['股本'] || 0) + faceTotal
-  state.balances['资本公积-股本溢价'] = (state.balances['资本公积-股本溢价'] || 0) + premium
-  
-  // 生成分录
+
+  // 生成分录（余额一律由 applyBusiness → bump 统一过账，禁止在此手动改 balances，否则双重记账）
   const entries = [
     { side: 'debit', account: '银行存款', amount: totalAmountW },
     { side: 'credit', account: '股本', amount: faceTotal },
@@ -1597,8 +1600,8 @@ export function ipoFunding(state, totalAmount, faceValuePerShare = 1, shares = 1
   if (premium > 0) {
     entries.push({ side: 'credit', account: '资本公积-股本溢价', amount: premium })
   }
-  
-  // 记录凭证
+
+  // 记录凭证（唯一过账入口）
   applyBusiness(state, entries, `IPO发行股票募资`, state.month)
   
   return {
@@ -1787,6 +1790,8 @@ export function applyCompanySpecialEvent(state, choice) {
       ]
       applyBusiness(state, entries, `宣告并支付分红${Math.round(ratio * 100)}%`, state.month)
       state.totalDividend = +(state.totalDividend || 0) + net
+      // P1 修复：同步累加现金流出的分红净额，保证现金流表勾稽
+      state.dividendPaid = +((state.dividendPaid || 0) + net).toFixed(2)
       return { success: true, message: `✓ 分红¥${fmtW(net)}万（含税¥${fmtW(div)}万，代扣个税¥${fmtW(tax)}万）`, entries }
     }
     
