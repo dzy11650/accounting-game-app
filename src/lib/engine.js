@@ -27,6 +27,9 @@ const INITIAL_BALANCES = () => ({
   预付账款: 0, 短期借款: 0, 应付职工薪酬: 0, 应付利息: 0, 应交税费: 0,
   实收资本: 0, 股本: 0, 本年利润: 0, 主营业务收入: 0, 主营业务成本: 0,
   管理费用: 0, 财务费用: 0, 研发费用: 0, 所得税费用: 0,
+  // 金融专属科目
+  贷款资产: 0, 债权投资: 0, 交易性金融资产: 0, 利息收入: 0,
+  公允价值变动损益: 0, 手续费支出: 0, 信用减值损失: 0,
 })
 
 // 科目性质：true = 借增贷减；false = 贷增借减
@@ -38,6 +41,10 @@ const NATURE = {
   实收资本: false, 股本: false, 本年利润: false, 累计折旧: false, 累计摊销: false, 主营业务收入: false,
   // P0 修复：以下科目贷增借减（负债/备抵/权益类），natureOf 按父科目前缀命中
   合同负债: false, 资本公积: false, 坏账准备: false, 应付股利: false, 利润分配: true,
+  // 金融专属科目：资产类借增贷减(true)，收入类贷增借减(false)，费用类借增贷减(true)
+  贷款资产: true, 债权投资: true, 交易性金融资产: true,
+  利息收入: false, 公允价值变动损益: false,
+  手续费支出: true, 信用减值损失: true,
 }
 function natureOf(account) {
   if (NATURE[account] !== undefined) return NATURE[account]
@@ -67,6 +74,9 @@ const PNL_SUBJECTS_TO_RESET = [
   '财务费用',
   '研发费用',
   '信用减值损失',
+  '利息收入',
+  '手续费支出',
+  '公允价值变动损益',
   '营业外收入-补贴',
 ]
 
@@ -106,6 +116,9 @@ function pnlCat(account) {
   if (account === '研发费用' || account.startsWith('研发费用')) return 'rd'
   if (account === '所得税费用' || account.startsWith('所得税费用')) return 'tax'
   if (account === '信用减值损失' || account.startsWith('信用减值损失')) return 'impair'
+  if (account === '利息收入' || account.startsWith('利息收入')) return 'interestIncome'
+  if (account === '手续费支出' || account.startsWith('手续费支出')) return 'feeExpense'
+  if (account === '公允价值变动损益' || account.startsWith('公允价值变动损益')) return 'fairValue'
   return null
 }
 
@@ -121,6 +134,162 @@ export const DIFFICULTY = {
   hardcore: { id: 'hardcore', name: '硬核模式', lives: 0, autoFix: false, randFund: true, selfEntry: true,
     hint: '错 1 次即失败，学不到最终关',
     econ: { costMult: 1.25, marginMult: 0.82, eventMult: 1.3 } },
+}
+
+// ================= 市场竞争机制（最小原型） =================
+// 设计目标：让玩家感知「市场上不止我一家」，但不做重 AI。
+//  - 生成 2~3 个同行业对手（名字 / 规模 / 城市 / 品牌力）
+//  - 行业总需求随月份与事件波动
+//  - 每笔销售按「玩家定价 vs 行业均价 + 品牌力」分配需求份额
+//  - 对手按季度按行业增长率演进规模（不逐月精算）
+//  - 玩家份额过低（<10%）触发大客户流失 / 挖角 / 并购要约事件
+//  - 报表展示 CR3 集中度、玩家份额排名、近 3 个月份额走势
+
+// 各行业的对手池（名字取自真实商业风格的中性虚构名，避免影射真实企业）
+const RIVAL_POOL = {
+  shop:    [['蜜雪坊', '杭州'], ['茶百川', '成都'], ['喜小茶', '广州']],
+  tech:    [['云启科技', '北京'], ['星链软件', '深圳'], ['智算未来', '杭州']],
+  factory: [['恒力制造', '苏州'], ['中盛工业', '宁波'], ['东方精工', '青岛']],
+  trade:   [['远洋商贸', '上海'], ['华通供应链', '天津'], ['宏图进出口', '厦门']],
+  listed:  [['国泰控股', '北京'], ['长江实业', '上海'], ['华夏集团', '深圳']],
+  finance: [['兴业资本', '上海'], ['中信财富', '北京'], ['招银投控', '深圳']],
+}
+
+// 初始化市场竞争数据
+export function initMarketData(companyId, diffId = 'easy') {
+  const pool = RIVAL_POOL[companyId] || RIVAL_POOL.shop
+  const rivalCount = 2 + (Math.random() < 0.5 ? 1 : 0) // 2 或 3 个对手
+  const competitors = pool.slice(0, rivalCount).map(([name, city], i) => ({
+    id: `rival_${i + 1}`,
+    name,
+    city,
+    // 初始规模：0.6~1.6 倍玩家规模，形成强弱梯队
+    scale: +(0.6 + Math.random() * 1.0).toFixed(2),
+    brandPower: +(0.35 + Math.random() * 0.45).toFixed(2), // 品牌力 0.35~0.80
+    priceIndex: +(0.92 + Math.random() * 0.16).toFixed(3), // 相对行业均价的定价系数
+  }))
+  const avgScale = competitors.reduce((t, c) => t + c.scale, 0) / competitors.length
+  const playerScale = 1
+  const totalScale = playerScale + competitors.reduce((t, c) => t + c.scale, 0)
+  return {
+    competitors,
+    industryTotalDemand: +(60 + Math.random() * 40).toFixed(1), // 行业月总需求（万元）
+    industryGrowth: 0.02,       // 季度行业增长率
+    playerPriceIndex: 1.0,      // 玩家相对行业均价的定价系数（1.0 = 均价）
+    playerShare: +(playerScale / totalScale).toFixed(4),
+    shareHistory: [],           // [{month, share, rivals:[{name,share}]}]
+    cr3: 0,                     // 前三集中度
+    rank: 1,                    // 玩家份额排名
+    lowShareMonths: 0,          // 连续低份额月数
+    triggered: [],              // 已触发的低份额事件
+    avgRivalScale: +avgScale.toFixed(2),
+  }
+}
+
+// 核心份额公式：份额 ∝ 品牌力 / 价格指数（价格越低、品牌越强，份额越高）
+// 返回归一化后的各方份额（总和 = 1）
+export function calcShares(playerBrand, playerPrice, rivals) {
+  const playerScore = Math.max(0.05, playerBrand) / Math.max(0.5, playerPrice)
+  const rivalScores = rivals.map((r) => Math.max(0.05, r.brandPower) / Math.max(0.5, r.priceIndex))
+  const total = playerScore + rivalScores.reduce((a, b) => a + b, 0)
+  return {
+    player: +(playerScore / total).toFixed(4),
+    rivals: rivalScores.map((s) => +(s / total).toFixed(4)),
+  }
+}
+
+// 玩家每笔销售后：按份额分配需求，并更新市场份额
+// priceIndex: 玩家当前定价系数（1.0 = 行业均价；<1 低价抢份额，>1 高价丢份额）
+export function updateMarketShare(state, priceIndex = null) {
+  const md = state.marketData
+  if (!md) return null
+  if (priceIndex != null) md.playerPriceIndex = priceIndex
+  // 玩家品牌力：随规模/营收增长，初始 0.5
+  const playerBrand = Math.min(0.95, 0.5 + (state.scale || 1) * 0.12 + Math.min(0.2, (state.cum?.revenue || 0) / 400))
+  const shares = calcShares(playerBrand, md.playerPriceIndex, md.competitors)
+  md.playerShare = shares.player
+  md.competitors.forEach((c, i) => { c.share = shares.rivals[i] })
+  // 集中度 CR3 = 份额最大的 3 家之和
+  const all = [shares.player, ...shares.rivals].sort((a, b) => b - a)
+  md.cr3 = +all.slice(0, 3).reduce((a, b) => a + b, 0).toFixed(4)
+  // 排名
+  md.rank = 1 + shares.rivals.filter((s) => s > shares.player).length
+  return md
+}
+
+// 月度：行业需求波动 + 份额历史记录
+export function rollMarketMonth(state, rng = Math.random) {
+  const md = state.marketData
+  if (!md) return null
+  // 行业需求随行情波动（丰年 +15%，歉年 -15%）
+  const moodMult = state.yearMood === 'good' ? 1.15 : state.yearMood === 'bad' ? 0.85 : 1.0
+  md.industryTotalDemand = +Math.max(20, md.industryTotalDemand * moodMult * (0.97 + rng() * 0.06)).toFixed(1)
+  // 记录份额历史（保留最近 6 个月，UI 展示最近 3 个月）
+  md.shareHistory.push({
+    month: state.month,
+    share: md.playerShare,
+    rivals: md.competitors.map((c) => ({ name: c.name, share: c.share || 0 })),
+  })
+  if (md.shareHistory.length > 6) md.shareHistory.shift()
+  // 低份额计数
+  if (md.playerShare < 0.10) md.lowShareMonths = (md.lowShareMonths || 0) + 1
+  else md.lowShareMonths = 0
+  return md
+}
+
+// 季度：对手按行业增长率演进规模（不做逐月精算）
+export function evolveCompetitorsQuarterly(state, rng = Math.random) {
+  const md = state.marketData
+  if (!md) return []
+  const growth = md.industryGrowth
+  const news = []
+  md.competitors.forEach((c) => {
+    const factor = 1 + growth * (0.6 + rng() * 0.9)
+    const before = c.scale
+    c.scale = +(c.scale * factor).toFixed(2)
+    // 品牌力缓慢漂移
+    c.brandPower = +Math.min(0.95, Math.max(0.2, c.brandPower + (rng() - 0.45) * 0.04)).toFixed(2)
+    if (c.scale / before > 1.09) news.push(`${c.name}（${c.city}）本季扩张迅猛，规模增至 ${c.scale} 倍`)
+    else if (c.scale / before < 0.96) news.push(`${c.name}（${c.city}）本季收缩，规模降至 ${c.scale} 倍`)
+  })
+  md.avgRivalScale = +(md.competitors.reduce((t, c) => t + c.scale, 0) / md.competitors.length).toFixed(2)
+  return news
+}
+
+// 低份额触发事件：大客户流失 / 对手挖角 / 被并购要约
+export function checkLowShareEvent(state) {
+  const md = state.marketData
+  if (!md || md.playerShare >= 0.10) return null
+  const candidates = ['churn', 'poach', 'merger'].filter((k) => !md.triggered.includes(k))
+  if (!candidates.length) return null
+  const kind = candidates[Math.floor(Math.random() * candidates.length)]
+  md.triggered.push(kind)
+  const top = [...md.competitors].sort((a, b) => (b.share || 0) - (a.share || 0))[0]
+  if (kind === 'churn') {
+    return { kind, title: '⚠️ 大客户流失', desc: `市场份额跌至 ${(md.playerShare * 100).toFixed(1)}%，一位长期大客户转投「${top?.name || '竞争对手'}」。`, effect: 'revenueDown' }
+  }
+  if (kind === 'poach') {
+    return { kind, title: '⚠️ 对手挖角', desc: `「${top?.name || '竞争对手'}」开出高薪，挖走了你的核心业务骨干，本月效率下降。`, effect: 'wageUp' }
+  }
+  return { kind, title: '💼 收到并购要约', desc: `「${top?.name || '竞争对手'}」认为你已无力竞争，提出收购要约——你可以选择接受（提前结算）或拒绝继续经营。`, effect: 'mergerOffer' }
+}
+
+// 组装市场面板数据（供报表 / UI 展示）
+export function buildMarketPanel(state) {
+  const md = state.marketData
+  if (!md) return null
+  const recent = md.shareHistory.slice(-3)
+  return {
+    type: 'market',
+    playerShare: md.playerShare,
+    playerRank: md.rank,
+    cr3: md.cr3,
+    industryTotalDemand: md.industryTotalDemand,
+    playerPriceIndex: md.playerPriceIndex,
+    competitors: md.competitors.map((c) => ({ name: c.name, city: c.city, scale: c.scale, brandPower: c.brandPower, share: c.share || 0 })),
+    trend: recent.map((h) => ({ month: h.month, share: h.share })),
+    lowShareMonths: md.lowShareMonths || 0,
+  }
 }
 
 // ---------- 税务规则 ----------
@@ -186,7 +355,7 @@ export function createCompany(companyId, diffId = 'easy', projectId = null) {
     totalDividend: 0,              // 累计已分红净额（股东实得）
     quarterRevenue: 0,             // 本季度累计营收（用于小规模免税判定）
     usedTaxPlans: [],              // 已采用的合法筹划手段 id 列表
-    cum: { revenue: 0, cost: 0, mgmt: 0, fin: 0, rd: 0, tax: 0 }, // 累计损益（实时追踪，供利润表展示）
+    cum: { revenue: 0, cost: 0, mgmt: 0, fin: 0, rd: 0, tax: 0, impair: 0, interestIncome: 0, feeExpense: 0, fairValue: 0 }, // 累计损益（实时追踪，供利润表展示）
     // 游戏性增强字段
     receivables: [],               // 应收账款（赊销，F）
     payablesDue: [],               // 到期应付账款（F）
@@ -213,6 +382,8 @@ export function createCompany(companyId, diffId = 'easy', projectId = null) {
     talentInfluencer: false, talentBudgetEye: false, talentDataBoard: false,
     talentInsider: false, talentPeerBench: false, talentMicroWhite: false,
     infoLevel: 0,
+    // —— 市场竞争机制（多公司竞争原型） ——
+    marketData: initMarketData(companyId, diffId),
   }
   return state
 }
@@ -487,16 +658,45 @@ function withMeta(e, month, i) {
 }
 
 // 应用分录（按科目性质记账 + 写账本）
+// 每笔过账前校验借贷平衡，不平衡立即抛错（防回归护栏）
 export function applyBusiness(state, entries, desc, month) {
+  assertBalanced(entries)
   const ledger = [...state.ledger]
   entries.forEach((e) => {
     const delta = bump(state.balances, e.account, e.side, e.amount)
     const cat = pnlCat(e.account)
     if (cat && state.cum) state.cum[cat] = +((state.cum[cat] || 0) + delta).toFixed(2)
   })
+  // 金融公司专属指标快照：贷款资产 / 利息收入 / 公允价值变动
+  if (state.co?.id === 'finance') {
+    const b = state.balances
+    state.financeMetrics = state.financeMetrics || {}
+    state.financeMetrics.loanAssets = +(b['贷款资产'] || 0).toFixed(2)
+    state.financeMetrics.interestIncomeCum = +((state.cum.interestIncome || 0)).toFixed(2)
+    state.financeMetrics.fairValueCum = +((state.cum.fairValue || 0)).toFixed(2)
+    state.financeMetrics.feeExpenseCum = +((state.cum.feeExpense || 0)).toFixed(2)
+    state.financeMetrics.impairmentCum = +((state.cum.impair || 0)).toFixed(2)
+  }
   entries.forEach((e, i) => ledger.push(withMeta(e, month ?? state.month, ledger.length + i)))
   state.ledger = ledger
   return state
+}
+
+// 借贷平衡校验（供 applyBusiness 与测试使用）
+export function assertBalanced(entries) {
+  if (!entries || entries.length === 0) return true
+  let debitSum = 0, creditSum = 0
+  for (const e of entries) {
+    const amt = typeof e.amount === 'number' ? e.amount : parseFloat(e.amount)
+    if (isNaN(amt)) throw new Error(`Invalid amount in entry: ${JSON.stringify(e)}`)
+    if (e.side === 'debit') debitSum += amt
+    else if (e.side === 'credit') creditSum += amt
+    else throw new Error(`Unknown side '${e.side}' in entry: ${JSON.stringify(e)}`)
+  }
+  if (Math.abs(debitSum - creditSum) > 0.001) {
+    throw new Error(`Unbalanced entries: debit=${debitSum.toFixed(2)}, credit=${creditSum.toFixed(2)}. Desc: ${entries[0]?.desc || ''}`)
+  }
+  return true
 }
 
 // 记录一张凭证（玩家自写或系统生成）。expected 为正确分录模板用于判分
@@ -555,14 +755,26 @@ export function monthEnd(state, opts = {}) {
   // 落在结转之后，永远不会被计入「本年利润」，导致恒等式失衡（gap = 当月递延额）。
   deferContractLiabilities(state)
 
+  // 市场竞争：月度需求波动 + 份额历史记录
+  rollMarketMonth(state)
+  // 每 3 个月（季度末）演进对手规模
+  if (m % 3 === 0) evolveCompetitorsQuarterly(state)
+  // 低份额触发事件（写入 pendingMarketEvent 供 UI 弹窗）
+  const lowEv = checkLowShareEvent(state)
+  if (lowEv) state.pendingMarketEvent = lowEv
+  else state.pendingMarketEvent = null
+
   // 结转损益：将本月损益科目余额转入「本年利润」，并清零损益科目（避免重复累计）
-  const rev = sumAccount(state.balances, '主营业务收入')
+  // 收入侧：主营收入 + 金融利息收入 + 公允价值变动收益（贷方余额为正）
+  const rev = sumAccount(state.balances, '主营业务收入') + sumAccount(state.balances, '利息收入')
   // 注意：所得税费用不计入此处 costs —— 企业所得税由 settleTax() 单独计提并直接结转「本年利润」（见 settleTax 内"结转所得税费用至本年利润"）。
   // 若此处再把所得税费用算进 costs 并 += monthProfit，会导致所得税被重复扣除一次（本月 settleTax 扣一次，下月 monthEnd 又把上月 settleTax 记的所得税费用算进 costs 再扣一次）。
   const costs = sumAccount(state.balances, '主营业务成本') + sumAccount(state.balances, '管理费用') +
     sumAccount(state.balances, '财务费用') + sumAccount(state.balances, '研发费用') +
     // P0 补漏：信用减值损失（坏账计提）也是损益类费用，须一并结转至本年利润，否则恒等式失衡
-    sumAccount(state.balances, '信用减值损失')
+    sumAccount(state.balances, '信用减值损失') +
+    // 金融专属费用：手续费支出、公允价值变动损失（借方余额为正）
+    sumAccount(state.balances, '手续费支出') - sumAccount(state.balances, '公允价值变动损益')
   const monthProfit = +(rev - costs).toFixed(2)
   state.balances['本年利润'] = +((state.balances['本年利润'] || 0) + monthProfit).toFixed(2)
   // 累计损益追踪：已改由 applyBusiness 实时累加至 state.cum（见 pnlCat），此处无需重复累加
@@ -715,7 +927,9 @@ export function loseLife(state) {
 
 export function totalAssets(b) {
   return +(b['银行存款'] + b['库存现金'] + (b['应收账款'] || 0) - (b['坏账准备'] || 0) + b['原材料'] + b['库存商品'] +
-    b['生产成本'] + b['固定资产'] - b['累计折旧'] + b['无形资产'] - b['累计摊销'] + b['研发支出'] + b['预付账款']).toFixed(2)
+    b['生产成本'] + b['固定资产'] - b['累计折旧'] + b['无形资产'] - b['累计摊销'] + b['研发支出'] + b['预付账款'] +
+    // 金融公司专属资产科目
+    (b['贷款资产'] || 0) + (b['债权投资'] || 0) + (b['交易性金融资产'] || 0)).toFixed(2)
 }
 
 export function sumAccount(b, parent) {
@@ -772,6 +986,12 @@ export function buildReports(state) {
     { item: '利润分配-应付股利', value: -(g('利润分配-应付股利') || 0).toFixed(2), side: 'equity' },
   ]
   const balance = { type: 'balance', rows: [...assets, ...liabilities, ...equity] }
+  // 金融公司专属资产：贷款资产 / 债权投资 / 交易性金融资产
+  if (state.co?.id === 'finance') {
+    balance.rows.push({ item: '贷款资产', value: +g('贷款资产').toFixed(2), side: 'asset' })
+    balance.rows.push({ item: '债权投资', value: +g('债权投资').toFixed(2), side: 'asset' })
+    balance.rows.push({ item: '交易性金融资产', value: +g('交易性金融资产').toFixed(2), side: 'asset' })
+  }
 
   // 利润表：优先用累计损益 cum（月末损益科目清零后仍可还原累计），回退到余额
   const cum = state.cum || {}
@@ -782,17 +1002,27 @@ export function buildReports(state) {
   const rd = +((cum.rd != null ? cum.rd : sumAccount(b, '研发费用'))).toFixed(2)
   const tax = +((cum.tax != null ? cum.tax : sumAccount(b, '所得税费用'))).toFixed(2)
   const netProfit = +(state.balances['本年利润'] || 0).toFixed(2) // 累计净利润以「本年利润」为准（带符号）
+  // 金融公司专属收入/费用科目
+  const interestIncome = +((cum.interestIncome != null ? cum.interestIncome : sumAccount(b, '利息收入'))).toFixed(2)
+  const feeExpense = +((cum.feeExpense != null ? cum.feeExpense : sumAccount(b, '手续费支出'))).toFixed(2)
+  const fairValueGain = +((cum.fairValue != null ? cum.fairValue : sumAccount(b, '公允价值变动损益'))).toFixed(2)
+  const incomeRows = [
+    { item: '营业收入', value: revenue },
+    { item: '减：营业成本', value: -cost },
+    { item: '减：管理费用', value: -mgmt },
+    { item: '减：财务费用', value: -fin },
+    { item: '减：研发费用', value: -rd },
+    { item: '减：所得税费用', value: -tax },
+  ]
+  // 金融公司：利息收入、手续费支出、公允价值变动损益
+  if (state.co?.id === 'finance') {
+    incomeRows.push({ item: '加：利息收入', value: interestIncome })
+    incomeRows.push({ item: '减：手续费支出', value: -feeExpense })
+    incomeRows.push({ item: '加/减：公允价值变动损益', value: fairValueGain })
+  }
   const income = {
     type: 'income',
-    rows: [
-      { item: '营业收入', value: revenue },
-      { item: '减：营业成本', value: -cost },
-      { item: '减：管理费用', value: -mgmt },
-      { item: '减：财务费用', value: -fin },
-      { item: '减：研发费用', value: -rd },
-      { item: '减：所得税费用', value: -tax },
-      { item: '净利润', value: netProfit, emphasize: true },
-    ],
+    rows: [...incomeRows, { item: '净利润', value: netProfit, emphasize: true }],
   }
 
   // 现金流量表（间接法·教学简化版）
@@ -839,7 +1069,7 @@ export function buildReports(state) {
     ],
   }
 
-  return { balance, income, cashflow }
+  return { balance, income, cashflow, marketPanel: buildMarketPanel(state) }
 }
 
 // ================= 第七章「持续经营」扩展 =================

@@ -15,6 +15,7 @@ import {
   analyzeDecision, financialSnapshot, complianceNow, checkProcessBadges,
   vatOnPurchaseForFactory, expenseRnD, capitalizeRnD, amortizeRnD, ipoFunding,
   pickCompanySpecialEvent, applyCompanySpecialEvent, resolveOptions,
+  buildMarketPanel, updateMarketShare,
 } from '../lib/engine.js'
 import { pickTalents, applyTalent } from '../data/talents.js'
 import TalentPicker from '../components/GameStart/TalentPicker.jsx'
@@ -79,6 +80,24 @@ function computeBrief(sim, action, co, diff) {
   }
   if (action.type === 'salary') return { type: 'salary', amount: +(eco.salary * scale * (1 + (sim.eventBuff?.salaryUp || 0))).toFixed(1) }
   if (action.type === 'rent') return { type: 'rent', amount: +(eco.rent * scale).toFixed(1) }
+  // 金融公司专属：发放贷款 / 收回本息 / 购债 / 公允价值变动 / 违约核销
+  if (action.type === 'loanIssue' || action.type === 'bondBuy') {
+    const amount = +(eco.dealSize * scale * boost).toFixed(1)
+    return { type: action.type, amount, rate: 0, vat: 0, cost: 0 }
+  }
+  if (action.type === 'loanCollect') {
+    const principal = +(eco.dealSize * scale * boost).toFixed(1)
+    const interest = +(principal * 0.015).toFixed(2)
+    return { type: action.type, amount: +(principal + interest).toFixed(1), principal, interest, rate: 0, vat: 0, cost: 0 }
+  }
+  if (action.type === 'fairValue') {
+    const amount = +(eco.dealSize * scale * boost * 0.2).toFixed(1)
+    return { type: action.type, amount, rate: 0, vat: 0, cost: 0 }
+  }
+  if (action.type === 'badLoanWriteoff') {
+    const amount = +(eco.dealSize * scale * boost * 0.3).toFixed(1)
+    return { type: action.type, amount, rate: 0, vat: 0, cost: 0 }
+  }
   return null
 }
 
@@ -284,6 +303,47 @@ function Game() {
       entries = [{ side: 'debit', account: '管理费用-工资', amount: a }, { side: 'credit', account: '应付职工薪酬', amount: a }]
       expected = entries
     }
+    // ── 金融公司专属 action 模板（co.id === 'finance'）──
+    // 发放贷款：借 贷款资产 / 贷 银行存款
+    else if (action.type === 'loanIssue') {
+      const a = +(action.amt || eco.dealSize * scale).toFixed(1)
+      entries = co.loanIssue(a)
+      expected = entries
+      desc = `发放贷款¥${a}万（借 贷款资产 / 贷 银行存款）`
+      s.salesThisMonth = (s.salesThisMonth || 0) + 1
+    }
+    // 收回贷款本息：借 银行存款 / 贷 贷款资产 + 利息收入
+    else if (action.type === 'loanCollect') {
+      const principal = +(action.principal || eco.dealSize * scale).toFixed(1)
+      const rate = action.rate != null ? action.rate : 0.015
+      const interest = +(principal * rate).toFixed(2)
+      entries = co.loanCollect(principal, interest)
+      expected = entries
+      desc = `收回贷款本息¥${principal + interest}万（本金¥${principal} + 利息¥${interest}，利率${(rate * 100).toFixed(1)}%）`
+      s.salesThisMonth = (s.salesThisMonth || 0) + 1
+    }
+    // 购买债券/理财：借 债权投资 / 贷 银行存款
+    else if (action.type === 'bondBuy') {
+      const a = +(action.amt || eco.dealSize * scale).toFixed(1)
+      entries = co.bondBuy(a)
+      expected = entries
+      desc = `购债/理财¥${a}万（借 债权投资 / 贷 银行存款）`
+    }
+    // 公允价值变动：借/贷 交易性金融资产 / 贷/借 公允价值变动损益
+    else if (action.type === 'fairValue') {
+      const a = +(action.amt || eco.dealSize * scale * 0.2).toFixed(1)
+      const gain = action.gain !== false
+      entries = co.fairValueChange(a, gain)
+      expected = entries
+      desc = gain ? `公允价值上升¥${a}万（借 交易性金融资产 / 贷 公允价值变动损益）` : `公允价值下降¥${a}万（借 公允价值变动损益 / 贷 交易性金融资产）`
+    }
+    // 违约核销：借 信用减值损失 / 贷 贷款资产
+    else if (action.type === 'badLoanWriteoff') {
+      const a = +(action.amt || eco.dealSize * scale * 0.3).toFixed(1)
+      entries = co.badLoanWriteoff(a)
+      expected = entries
+      desc = `核销违约贷款¥${a}万（借 信用减值损失 / 贷 贷款资产）`
+    }
 
     applyBusiness(s, entries, desc)
     return { entries, expected, desc, s }
@@ -448,7 +508,9 @@ function Game() {
       s.salesThisMonth = (s.salesThisMonth || 0) + 1
       s.choices = s.choices || {}
       s.choices.sales = (s.choices.sales || 0) + 1
-      setSim(s); setLastEntries(entries); setToast(`${desc} ✓（本月已做 ${s.salesThisMonth} 笔销售）`)
+      // 市场竞争：每笔销售后按「定价 vs 行业均价 + 品牌力」更新份额
+      updateMarketShare(s, 1 + (s.salePriceIndex || 0) - (sim.marketData?.avgRivalPrice || 1))
+      setSim(s); setLastEntries(entries); setToast(`${desc} ✓（本月已做 ${s.salesThisMonth} 笔销售） | 份额 ${(s.marketData?.playerShare != null ? (s.marketData.playerShare * 100).toFixed(1) : '?')}%`)
       setAnalysis(analyzeDecision(before, s, a, { title: `第 ${s.salesThisMonth} 笔销售` }))
       persist(s, coId, diffId, chapterIdx, stepIdx, false)
     } catch (e) {
@@ -1007,6 +1069,44 @@ const clone = (s) => {
             <button className="btn" style={{ flex: 1, minWidth: 140 }} onClick={doSaleOnce}>🛒 卖货收款（再做一笔）</button>
             <button className="btn" style={{ flex: 1, minWidth: 140, background: 'var(--gold)', color: '#fff' }} onClick={finishSaleMonth}>✅ 完成本月销售（{sim.salesThisMonth || 0}笔）</button>
           </div>
+        </div>
+      )}
+
+      {/* 市场竞争面板：从第 1 个月起展示 */}
+      {sim && sim.marketData && (sim.month || 0) > 0 && (
+        <div className="card" style={{ marginBottom: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>📊 市场竞争态势 · 第{sim.month}月</div>
+          <div style={{ fontSize: 12, color: 'var(--text-soft)' }}>
+            行业总需求 ¥<b>{sim.marketData.industryTotalDemand}万</b>/月
+            {' · '}玩家份额 <b style={{ color: 'var(--primary-deep)' }}>{(sim.marketData.playerShare * 100).toFixed(1)}%</b>
+            {' · '}CR3 集中度 <b>{(sim.marketData.cr3 * 100).toFixed(1)}%</b>
+            {' · '}玩家排名 #{sim.marketData.rank}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-soft)', marginTop: 4 }}>
+            {sim.marketData.competitors.map((c, i) => (
+              <span key={i} style={{ marginRight: 12 }}>
+                {c.name}({c.city})：份额 <b>{((c.share || 0) * 100).toFixed(1)}%</b> 规模×{c.scale}
+              </span>
+            ))}
+          </div>
+          {/* 近 3 个月份额走势（折线简化版） */}
+          {sim.marketData.shareHistory.length >= 2 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontWeight: 600, fontSize: 11, color: 'var(--text-soft)', marginBottom: 4 }}>近 {Math.min(3, sim.marketData.shareHistory.length)} 月份额走势</div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 60, background: '#F9FAFB', borderRadius: 8, padding: '6px 8px' }}>
+                {sim.marketData.shareHistory.slice(-3).map((h, idx) => {
+                  const barHeightPct = Math.min(100, h.share * 2000)
+                  return (
+                    <div key={idx} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
+                      <div style={{ fontSize: 10, color: 'var(--text-soft)' }}>月{h.month}</div>
+                      <div style={{ flex: 1, width: '100%', background: 'var(--primary)', borderRadius: '4px 4px 0 0', minHeight: 4, maxHeight: '100%', height: `${barHeightPct}%`, marginTop: 'auto' }} />
+                      <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary-deep)' }}>{(h.share * 100).toFixed(0)}%</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

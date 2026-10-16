@@ -148,6 +148,53 @@ export const COMPANIES = [
     ],
   },
   {
+    id: 'finance',
+    name: '金融机构',
+    emoji: '🏦',
+    difficulty: 4,
+    blurb: '放贷、投资、收息——金融业不走库存，用金融资产赚钱，科目与零售完全不同。',
+    initCash: 100,
+    economics: {
+      rent: 1.0, salary: 2.0, interestRate: 0.005, dealSize: 10, margin: 0.15,
+    },
+    fixedAssets: [{ name: '办公大楼/设备', value: 30, monthlyDep: 1.0 }],
+    // 金融专属：发放贷款（借 贷款资产 / 贷 银行存款）
+    loanIssue: (amt) => ([
+      { side: 'debit', account: '贷款资产', amount: amt },
+      { side: 'credit', account: '银行存款', amount: amt },
+    ]),
+    // 金融专属：收回贷款本息（principal 利息 interest）
+    loanCollect: (principal, interest) => ([
+      { side: 'debit', account: '银行存款', amount: principal + interest },
+      { side: 'credit', account: '贷款资产', amount: principal },
+      { side: 'credit', account: '利息收入', amount: interest },
+    ]),
+    // 金融专属：购买债券/理财产品（借 债权投资 / 贷 银行存款）
+    bondBuy: (amt) => ([
+      { side: 'debit', account: '债权投资', amount: amt },
+      { side: 'credit', account: '银行存款', amount: amt },
+    ]),
+    // 金融专属：公允价值变动（gain=true 上升，gain=false 下降）
+    fairValueChange: (amt, gain = true) => ([
+      { side: 'debit', account: gain ? '交易性金融资产' : '公允价值变动损益', amount: Math.abs(amt) },
+      { side: 'credit', account: gain ? '公允价值变动损益' : '交易性金融资产', amount: Math.abs(amt) },
+    ]),
+    // 金融专属：违约核销（借 信用减值损失 / 贷 贷款资产）
+    badLoanWriteoff: (amt) => ([
+      { side: 'debit', account: '信用减值损失', amount: amt },
+      { side: 'credit', account: '贷款资产', amount: amt },
+    ]),
+    // 金融公司不走库存，无 purchase / costOfSale 卖货语义
+    revenueAccount: '利息收入',
+    costAccount: '手续费支出',
+    // 经营项目：同一品类下可细分不同产品线，参数略有差异
+    projects: [
+      { id: 'loan', name: '消费信贷', emoji: '💰', blurb: '发放个人消费贷款，按月收息，有坏账风险。', econ: { margin: 0.12, dealSize: 8 } },
+      { id: 'bond', name: '债券投资', emoji: '📈', blurb: '买入国债/企业债，持有收息，公允价值波动。', econ: { margin: 0.08, dealSize: 15 } },
+      { id: 'wealth', name: '财富管理', emoji: '📊', blurb: '代销理财收取手续费，轻资产业务。', econ: { margin: 0.25, dealSize: 5 } },
+    ],
+  },
+  {
     id: 'listed',
     name: '上市公司',
     emoji: '🏢',
