@@ -1069,6 +1069,42 @@ export function buildReports(state) {
     ],
   }
 
+// ================= 现金流量表（直接法）===================
+function buildCashFlow(state) {
+  const g = (k) => +(state.balances?.[k] || 0).toFixed(2)
+  const openingCash = +((state._openingCash) || 0).toFixed(2)
+  const closingCash = +(g('银行存款') + g('库存现金')).toFixed(2)
+
+  const operating = {
+    items: [
+      { label: '销售商品收到的现金', amount: +((state.cum?.revenue) || 0).toFixed(2) },
+      { label: '购买商品支付的现金', amount: +(-(state.cum?.cost) || 0).toFixed(2) },
+      { label: '支付职工薪酬', amount: +(-(state.cum?.mgmt || 0) + (state.cum?.fin || 0)).toFixed(2) },
+      { label: '支付的各项税费', amount: +(-(state.cum?.tax) || 0).toFixed(2) },
+    ],
+  }
+  operating.net = +operating.items.reduce((s, i) => s + i.amount, 0).toFixed(2)
+
+  const investing = {
+    items: [
+      { label: '购建固定资产支付的现金', amount: +(-(state.cum?.mgmt || 0) * 0.3).toFixed(2) },
+    ],
+  }
+  investing.net = +investing.items.reduce((s, i) => s + i.amount, 0).toFixed(2)
+
+  const financing = {
+    items: [
+      { label: '吸收投资收到的现金', amount: +(state.cum?.equityIn || 0).toFixed(2) },
+      { label: '取得借款收到的现金', amount: +(state.cum?.loanIn || 0).toFixed(2) },
+      { label: '偿还借款支付的现金', amount: +(-(state.cum?.loanOut || 0)).toFixed(2) },
+      { label: '分配股利支付的现金', amount: +(-(state.dividendPaid || 0)).toFixed(2) },
+    ],
+  }
+  financing.net = +financing.items.reduce((s, i) => s + i.amount, 0).toFixed(2)
+
+  const netIncrease = +(operating.net + investing.net + financing.net).toFixed(2)
+  return { operating, investing, financing, netIncrease, openingCash, closingCash }
+}
   return { balance, income, cashflow, marketPanel: buildMarketPanel(state) }
 }
 
