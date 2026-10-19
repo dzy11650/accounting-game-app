@@ -58,6 +58,7 @@ export default function Reports() {
         <div ref={reportRef}>
           <ReportView report={report.balance} />
           <ReportView report={report.income} />
+<ReportView report={report.cashflow} />
         </div>
       ) : (
         <div className="card" style={{ textAlign: 'center', color: 'var(--text-soft)' }}>
