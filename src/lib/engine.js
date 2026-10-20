@@ -722,6 +722,28 @@ export function gradeEntries(actual, expected) {
 }
 
 // ---------- 月末结账 ----------
+
+/**
+ * 营业外收入/支出 月末结转：
+ * 7d0e7f93 起「营业外收入-*/营业外支出-*」被 PNL_SUBJECTS_TO_RESET 无条件清零，
+ * 但那批子科目从未接入 monthProfit 公式 —— 税收返补只进银行存款、罚款只扣银行存款、
+ * 政策补贴只进银行存款，全都没进本年利润，资产变动与权益变动之间留下永久缺口。
+ * 本函数在 clearPnLAccounts 之前，把全部营业外收支子科目余额结转入「本年利润」，
+ * 使它们既参与当月利润计算，又被正常清零，消除勾稽缺口。
+ */
+export function settleOtherIncome(state) {
+  const b = state.balances || {}
+  let othRev = 0, othCost = 0
+  for (const k of Object.keys(b)) {
+    const v = +b[k] || 0
+    if (k === '营业外收入' || k.startsWith('营业外收入-')) othRev += v
+    if (k === '营业外支出' || k.startsWith('营业外支出-')) othCost += v
+  }
+  if (othRev !== 0 || othCost !== 0) {
+    state.balances['本年利润'] = +((state.balances['本年利润'] || 0) + othRev - othCost).toFixed(2)
+  }
+}
+
 export function monthEnd(state, opts = {}) {
   const co = state.co
   const m = state.month + 1
@@ -772,6 +794,7 @@ export function monthEnd(state, opts = {}) {
   if (lowEv) state.pendingMarketEvent = lowEv
   else state.pendingMarketEvent = null
 
+  settleOtherIncome(state)
   // 结转损益：将本月损益科目余额转入「本年利润」，并清零损益科目（避免重复累计）
   // 收入侧：主营收入 + 金融利息收入 + 公允价值变动收益（贷方余额为正）
   const rev = sumAccount(state.balances, '主营业务收入') + sumAccount(state.balances, '利息收入')
