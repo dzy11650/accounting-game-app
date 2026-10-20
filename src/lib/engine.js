@@ -77,7 +77,8 @@ const PNL_SUBJECTS_TO_RESET = [
   '利息收入',
   '手续费支出',
   '公允价值变动损益',
-  '营业外收入-补贴',
+  '营业外收入',
+  '营业外支出',
 ]
 
 // 永不参与月末清零的科目（显式保护，防止后续误把税费类科目加入白名单）
@@ -599,8 +600,7 @@ export function settleTax(state, plans = []) {
   const cit0 = +((Math.max(0, taxableProfit)) * (taxableProfit > 0 && taxableProfit <= 300 ? TAX.CIT_SMALL : TAX.CIT)).toFixed(2)
   const rebate = state.taxRebate ? +(cit0 * state.taxRebate).toFixed(2) : 0
   if (rebate > 0) {
-    applyBusiness(state, mk('营业外收入-税收返补', rebate, '应交税费-税收返补', rebate, `税收返补¥${rebate}万`), state.month)
-    state.balances['本年利润'] = +((state.balances['本年利润'] || 0) + rebate).toFixed(2)
+    applyBusiness(state, mk('银行存款', rebate, '营业外收入-税收返补', rebate, `税收返补¥${rebate}万`), state.month)
   }
   // 小型微利优惠：年应税所得≤300万按5%，否则25%（默认已按此规则，这里仅做展示标注）
   const useSmallBenefit = planSet.has('smallBenefit') && taxableProfit > 0 && taxableProfit <= 300
@@ -1261,9 +1261,11 @@ export function evilTaxAdjust(state, ratio = 0.5) {
   state.evilCount = (state.evilCount || 0) + 1
   state.taxAdjusts = (state.taxAdjusts || 0) + 1
   state.taxAdjustAmount = +((state.taxAdjustAmount || 0) + cut).toFixed(2)
-  // 调账分录：借「应交税费」减少负债，贷「所得税费用」(红字冲减利润，使当期税更低)
+  // 调账分录：借「应交税费」减少负债，贷「本年利润」（直接冲减利润，使当期税更低）
+  // 注意：不能贷「所得税费用」——它在 PNL_KEEP_BALANCE_SUBJECTS 保护清单中永不清零，
+  // 会造成贷方余额跨月累积、恒等式失衡。改走「本年利润」当月即可正常结转。
   const entries = [
-    ...mk('应交税费', cut, '所得税费用', cut, '调账：调减本期应纳税额（违规）'),
+    ...mk('应交税费', cut, '本年利润', cut, '调账：调减本期应纳税额（违规）'),
   ]
   applyBusiness(state, entries, '税务调账（违规）', state.month)
   return `😈 你通过调账把应纳税额调减了 ¥${cut}万（累计已调减 ¥${state.taxAdjustAmount}万）。账面少缴了税，但调账次数越多，被税务局稽查的概率越高。`
@@ -1393,13 +1395,13 @@ export function taxAudit(state, month) {
 
 // 每年末（monthEnd 后）检测邪道爆雷：恶果延迟爆发，违规越多越易出事
 // 通过返回事件描述字符串（或 null）让 UI 提示；设置 state.failed 则破产
-export function maybeEvilBlowup(state, month) {
+export function maybeEvilBlowup(state, month, rng = Math.random) {
   state.pendingBlowup = null
   if ((state.evilCount || 0) === 0) return null
   // 每年 12 月（month%12===0）才有概率稽查；违规越多概率越高
   if (month % 12 !== 0) return null
   const p = Math.min(0.85, 0.12 * (state.evilCount || 0)) // 单次爆雷概率随违规数上升
-  if (Math.random() > p) return null
+  if (rng() > p) return null
 
   const year = state.year
   const taxDue = +sumAccount(state.balances, '应交税费').toFixed(2)
@@ -1409,13 +1411,15 @@ export function maybeEvilBlowup(state, month) {
   // 补缴税款 + 0.5 倍罚款
   if (taxDue > 0) {
     const fine = +(taxDue * 0.5).toFixed(2)
-    entries.push(...mk('所得税费用', fine, '应交税费-滞纳金', fine, `税务稽查：追缴税款¥${taxDue}万 + 罚款¥${fine}万`))
-    entries.push(...mk('应交税费-滞纳金', fine, '银行存款', fine, '缴纳滞纳金罚款'))
+    // 修复：借「应交税费」销账，贷「银行存款」现金流出；罚款走「营业外支出-罚款」
+    entries.push(...mk('应交税费', taxDue, '银行存款', taxDue, `税务稽查：追缴税款¥${taxDue}万`))
+    entries.push(...mk('营业外支出-罚款', fine, '银行存款', fine, `缴纳滞纳金罚款¥${fine}万`))
     events.push(`税务稽查：追缴税款¥${taxDue}万、罚款¥${fine}万`)
   }
   if (wageDue > 0) {
     const fine = +(wageDue * 0.5).toFixed(2)
-    entries.push(...mk('管理费用', fine, '银行存款', fine, `劳动稽查：补发欠薪¥${wageDue}万 + 赔偿¥${fine}万`))
+    entries.push(...mk('应付职工薪酬', wageDue, '银行存款', wageDue, `劳动稽查：补发欠薪¥${wageDue}万`))
+    entries.push(...mk('营业外支出-赔偿', fine, '银行存款', fine, `赔偿¥${fine}万`))
     events.push(`劳动稽查：补发欠薪¥${wageDue}万、赔偿¥${fine}万`)
   }
   if (entries.length) {
