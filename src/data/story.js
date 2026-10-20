@@ -278,6 +278,33 @@ export const STORY = [
           },
         ],
       },
+      {
+        condition: (sim) => sim.co.id === 'shop' && !sim.rdProject,
+        npc: '导师：想提升毛利吗？可以研发新果茶。投入越高、周期越长，成功率越高，但期间利润会被研发支出吃掉。',
+        options: [
+          {
+            label: '小试（2万，1个月，60%成功）',
+            action: { type: 'startRd', level: 'small', cost: 2, months: 1, rate: 0.6 },
+            teach: '小试：投入少、周期快，但容易失败。失败全额进当期损益。',
+          },
+          {
+            label: '中试（5万，2个月，75%成功）',
+            action: { type: 'startRd', level: 'medium', cost: 5, months: 2, rate: 0.75 },
+            teach: '中试：平衡投入与风险，成功后毛利提升。',
+          },
+          {
+            label: '重投（10万，3个月，90%成功）',
+            action: { type: 'startRd', level: 'large', cost: 10, months: 3, rate: 0.9 },
+            teach: '重投：高投入高回报，成功后毛利+15% 且有爆款加成。',
+          },
+          {
+            label: '暂缓研发',
+            action: { type: 'skipRd' },
+            teach: '暂时不投入，专注现有产品运营。',
+          },
+        ],
+        teach: '研发期间每月需支付研发人员工资和材料费，无论成功与否，这些支出都会影响当期利润。',
+      },
     ],
   },
   {
