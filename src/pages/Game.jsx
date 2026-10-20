@@ -151,7 +151,7 @@ function Game() {
   useEffect(() => {
     const selfModeNow = diff.selfEntry && (resolveOptions(step, sim)?.[0]?.action)
     const curActionNow = resolveOptions(step, sim)?.[0]?.action
-    const entryActionTypes = ['rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary', 'produce', 'complete', 'expenseRnD', 'capitalizeRnD', 'amortizeRnD', 'ipoFunding']
+    const entryActionTypes = ['startRd', 'skipRd','rent', 'fixed', 'purchase', 'purchaseCredit', 'sale', 'salary', 'produce', 'complete', 'expenseRnD', 'capitalizeRnD', 'amortizeRnD', 'ipoFunding']
     const isEntryActionNow = curActionNow && entryActionTypes.includes(curActionNow.type)
     if (selfModeNow && isEntryActionNow && sim && co) setBrief(computeBrief(sim, curActionNow, co, diff))
     else setBrief(null)
@@ -346,6 +346,20 @@ function Game() {
       desc = `核销违约贷款¥${a}万（借 信用减值损失 / 贷 贷款资产）`
     }
 
+    // R&D actions
+    if (action.type === 'startRd') {
+      const result = startRdProject(s, action.level, action.cost, action.months, action.rate);
+      if (result.success) {
+        setToast({ show: true, message: result.message, type: 'info' });
+      } else {
+        setToast({ show: true, message: result.message, type: 'error' });
+      }
+      return { entries: [], expected: [], desc: result.message, s };
+    }
+    if (action.type === 'skipRd') {
+      setToast({ show: true, message: '暂缓研发', type: 'info' });
+      return { entries: [], expected: [], desc: '暂缓研发', s };
+    }
     applyBusiness(s, entries, desc)
     return { entries, expected, desc, s }
   }
