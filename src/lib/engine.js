@@ -628,6 +628,8 @@ export function settleTax(state, plans = []) {
 }
 
 // 股东分红：从本年利润中按 ratio 计提应付股利（合法分配税后利润）
+// 正确结构（参照 special_dividend case）：借利润分配-应付股利 div，贷银行存款 net，贷应交税费-个人所得税 tax
+// 公司总现金流出 = net（股东实际到手），个税由股东承担，不从公司利润扣除
 export function declareDividend(state, ratio = 0.3) {
   const profit = state.balances['本年利润'] || 0
   if (profit <= 0) {
@@ -635,19 +637,18 @@ export function declareDividend(state, ratio = 0.3) {
   }
   const div = +((profit * ratio).toFixed(2))
   if (div <= 0) return { ok: false, amount: 0, msg: '分红金额为0' }
-  // 分红需代扣个税（股息红利20%），演示简化为从现金代扣
-  const divTax = +(div * 0.2).toFixed(2)
-  const net = +(div - divTax).toFixed(2)
+  const tax = +(div * 0.2).toFixed(2)
+  const net = +(div - tax).toFixed(2)
   const entries = [
-    ...mk('应付股利', div, '银行存款', div, `宣告并支付股东分红${Math.round(ratio * 100)}%`),
-    ...mk('利润分配-应付股利', div, '应付股利', div, '结转应付股利'),
-    ...mk('应交税费-个人所得税', divTax, '银行存款', divTax, '代扣股息红利个税20%'),
+    { side: 'debit', account: '利润分配-应付股利', amount: div },
+    { side: 'credit', account: '银行存款', amount: net },
+    { side: 'credit', account: '应交税费-个人所得税', amount: tax },
   ]
   applyBusiness(state, entries, `股东分红（${Math.round(ratio * 100)}%）`, state.month)
   state.totalDividend = +(state.totalDividend || 0) + net
-  // P1 修复：累加实际流出现金的分红净额，供现金流表"分配利润支付的现金"勾稽
-  state.dividendPaid = +((state.dividendPaid || 0) + net).toFixed(2)
-  return { ok: true, amount: net, gross: div, tax: divTax, msg: `分红 ${fmtW(net)}万（代扣个税 ${fmtW(divTax)}万）` }
+  // P1 修复：累加实际流出现金的分红净额（net），供现金流表"分配利润支付的现金"勾稽
+  state.dividendPaid = +(state.dividendPaid || 0) + net
+  return { ok: true, amount: net, gross: div, tax: tax, msg: `分红 ${fmtW(net)}万（含税${fmtW(div)}万，代扣个税${fmtW(tax)}万）` }
 }
 
 function mk(d, da, c, ca, desc) {
@@ -934,7 +935,8 @@ export function loseLife(state) {
 
 export function totalAssets(b) {
   return +(b['银行存款'] + b['库存现金'] + (b['应收账款'] || 0) - (b['坏账准备'] || 0) + b['原材料'] + b['库存商品'] +
-    b['生产成本'] + b['固定资产'] - b['累计折旧'] + b['无形资产'] - b['累计摊销'] + b['研发支出'] + b['预付账款'] +
+    b['生产成本'] + b['固定资产'] - b['累计折旧'] + b['无形资产'] - b['累计摊销'] + b['研发支出'] +
+    sumAccount(b, '预付账款') +
     // 金融公司专属资产科目
     (b['贷款资产'] || 0) + (b['债权投资'] || 0) + (b['交易性金融资产'] || 0)).toFixed(2)
 }
@@ -1076,8 +1078,12 @@ export function buildReports(state) {
     ],
   }
 
+  // 同时返回两种口径：cashflow=间接法（Reports.jsx 渲染）、cashFlow=直接法（数据面板/测试勾稽）
+  return { balance, income, cashflow, cashFlow: buildCashFlow(state), marketPanel: buildMarketPanel(state) }
+}
+
 // ================= 现金流量表（直接法）===================
-function buildCashFlow(state) {
+export function buildCashFlow(state) {
   const g = (k) => +(state.balances?.[k] || 0).toFixed(2)
   const openingCash = +((state._openingCash) || 0).toFixed(2)
   const closingCash = +(g('银行存款') + g('库存现金')).toFixed(2)
@@ -1199,9 +1205,6 @@ export function processRdProject(state) {
   } else if (state.rdProject.stage === 'investing') {
     state.rdProject.stage = 'waiting';
   }
-}
-
-  return { balance, income, cashflow, marketPanel: buildMarketPanel(state) }
 }
 
 // ================= 第七章「持续经营」扩展 =================
