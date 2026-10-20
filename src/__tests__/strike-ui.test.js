@@ -1,100 +1,50 @@
+/**
+ * #16 罢工弹窗必崩 — 复现测试
+ *
+ * 根因：Game.jsx 中 runSpecial 的签名是 (s, a) => {...}（两个参数），
+ * 但罢工弹窗 onResolve 回调写成 runSpecial({ type: 'resolveStrike', option })（只传一个参数）。
+ * 于是 s = {type,option}，a = undefined，函数体内 a.type 抛 TypeError: Cannot read properties of undefined。
+ *
+ * 本测试用「与 Game.jsx 相同签名的桩函数」复现该调用约定错误，
+ * 并断言修复后的调用约定（runSpecial(s, a)）能正常工作。
+ */
 import { test } from 'node:test'
 import assert from 'node:assert'
-import { resolveStrike } from '../lib/engine.js'
+import { createCompany, resolveStrike } from '../lib/engine.js'
 
-test('#16 strike-ui: resolveStrike must accept (state, option) and return message', () => {
-  // Simulate strike scenario
-  const st = {
-    balances: { '银行存款': 100, '应付职工薪酬': 10 },
-    wageDiscontent: 80,
-    wageStrikes: 0,
-    pendingStrike: { month: 1 },
-    month: 1,
-    co: { id: 'shop' },
-    choices: {},
-    diffEcon: {},
-    loans: [],
-    fixedAssets: [],
-    cum: {},
-    ev: {},
-    ledger: [],
-    vouchers: [],
-    errors: [],
-    lives: 3,
-    difficulty: 'easy',
-    scale: 1,
-    boost: 0,
-    eventBuff: {},
-    monthOrders: [],
-    lastEvent: null,
-    year: 1,
-    yearMood: 'normal',
-    evilCount: 0,
-    evilEvents: [],
-    skippedTaxMonths: 0,
-    wageUnpaid: 0,
-    strikeThisMonth: false,
-    taxType: 'small',
-    cumSales: 0,
-    vatOutput: 0,
-    vatInput: 0,
-    forcedGeneral: false,
-    projectId: null,
-    projectName: null,
-    projectEmoji: null,
-    receivables: [],
-    payablesDue: [],
-    reachedMilestones: [],
-    choiceLog: [],
-    talents: [],
-    synergies: [],
-    rescueLimit: 1,
-    rescues: 0,
-    depreciationMult: 1,
-    interestMult: 1,
-    loanRateMult: 1,
-    mgmtMult: 1,
-    purchaseDown: 0,
-    salaryMult: 1,
-    buffMult: 1,
-    badEventMult: 1,
-    auditProbMult: 1,
-    auditFineMult: 1,
-    fineMult: null,
-    wageDiscontentMult: 1,
-    strikeLossMult: null,
-    supplierRiskMult: 1,
-    stockTieMult: 1,
-    safetyStockMult: 1,
-    salePriceBoost: 0,
-    creditTermBoost: 0,
-    orderMarginBoost: 0,
-    angelBoost: 0,
-    bridgeLoan: 0,
-    bridgeRateBoost: 0,
-    taxRebate: 0,
-    rndSuperBoost: 0,
-    talentReserve: false,
-    talentLightReserve: 0,
-    talentHitProduct: false,
-    talentInfluencer: false,
-    talentBudgetEye: false,
-    talentDataBoard: false,
-    talentInsider: false,
-    talentPeerBench: false,
-    talentMicroWhite: false,
-    infoLevel: 0,
-    marketData: { playerShare: 0.3, rivals: [], avgRivalPrice: 1, demand: 10 },
-    rdProject: null,
-    eventBuffer: {},
+// 与 Game.jsx runSpecial 完全一致的签名：(s, a) => {...}
+function runSpecialStub(s, a) {
+  if (a.type === 'resolveStrike') {
+    const msg = resolveStrike(s, a.option)
+    return { handled: true, msg }
   }
+  return { handled: false }
+}
 
-  // Test: resolveStrike should accept (state, option) and return a message string
-  const option = 'payFull'
-  const result = resolveStrike(st, option)
-  
-  // BUG REPRODUCTION: Current code expects runSpecial(action) but receives runSpecial(s, a)
-  // When called with wrong arity, this will throw TypeError
-  assert.ok(typeof result === 'string', 'resolveStrike must return a message string')
-  assert.ok(result.length > 0, 'resolveStrike message should not be empty')
+test('#16 罢工弹窗：错误调用约定 runSpecial({...}) 只传一个参数会抛 TypeError', () => {
+  const s = createCompany('shop', 'easy')
+  s.wageUnpaid = 5
+  s.wageDiscontent = 60
+  s.balances['银行存款'] = 50
+
+  // 复现 Bug：只传一个参数（当前 Game.jsx:917 的写法）
+  assert.throws(
+    () => runSpecialStub({ type: 'resolveStrike', option: 'full' }),
+    /Cannot read properties of undefined|undefined/,
+    '错误调用约定应当抛错——这正是线上崩溃的原因',
+  )
+})
+
+test('#16 罢工弹窗：正确调用约定 runSpecial(s, {...}) 应正常结算罢工', () => {
+  const s = createCompany('shop', 'easy')
+  s.wageUnpaid = 5
+  s.wageDiscontent = 60
+  s.balances['银行存款'] = 50
+
+  // 修复后的调用约定
+  const r = runSpecialStub(s, { type: 'resolveStrike', option: 'full' })
+  assert.strictEqual(r.handled, true, '应被 runSpecial 处理')
+  assert.ok(typeof r.msg === 'string' && r.msg.length > 0, '应返回提示文案')
+  assert.strictEqual(s.wageUnpaid, 0, '全额补发后欠薪应结清')
+  assert.strictEqual(s.wageDiscontent, 0, '全额补发后不满度应清零')
 })
