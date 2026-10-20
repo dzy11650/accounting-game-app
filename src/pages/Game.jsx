@@ -541,7 +541,7 @@ function Game() {
     }
     s.salesThisMonth = 0
     setSim(s)
-    nextStep()
+    nextStep(s)
   }
 
   const requestGeneral = () => {
@@ -629,13 +629,13 @@ function Game() {
     if (isBankrupt(s)) { fail(s, '资不抵债，公司破产！'); return }
     if (s.failed) { fail(s, s.failedReason); return }
     setSim(s); persist(s, coId, diffId, chapterIdx, stepIdx, false)
-    nextStep()
+    nextStep(s)
   }
 
   const afterAction = (s) => {
     if (isBankrupt(s)) { fail(s, '资不抵债，公司破产！'); return }
     if (s.failed) { fail(s, s.failedReason); return }
-    nextStep()
+    nextStep(s)
   }
 
   const doMonthEnd = (passed) => {
@@ -683,7 +683,7 @@ function Game() {
     if (newBadges.length) setTimeout(() => setToast(`🏅 新成就：${newBadges.join('、')}`), 2400)
     if (s.failed) { fail(s, s.failedReason); return }
     if (isBankrupt(s)) { fail(s, '资不抵债，公司破产！'); return }
-    nextStep()
+    nextStep(s)
   }
 
   const submitAdjust = (task) => {
@@ -716,17 +716,18 @@ function Game() {
     }
   }
 
-  const nextStep = () => {
+  const nextStep = (s = sim) => {
+    // #17 修复：显式接收最新 state，避免使用渲染闭包中的旧 sim
     if (stepIdx + 1 < chapter.steps.length) {
       const n = stepIdx + 1
       setStepIdx(n)
-      persist(sim, coId, diffId, chapterIdx, n, false)
+      persist(s, coId, diffId, chapterIdx, n, false)
     } else if (chapterIdx + 1 < STORY.length) {
       const ci = chapterIdx + 1
       setChapterIdx(ci); setStepIdx(0)
-      persist(sim, coId, diffId, ci, 0, false)
+      persist(s, coId, diffId, ci, 0, false)
     } else {
-      finish(sim)
+      finish(s)
     }
   }
 
@@ -914,7 +915,16 @@ const clone = (s) => {
     return (
       <>
         <Toast message={toast} onClose={() => setToast('')} />
-        <StrikeDialog sim={sim} onResolve={(option) => runSpecial({ type: 'resolveStrike', option })} />
+        <StrikeDialog
+          sim={sim}
+          onResolve={(option) => {
+            // #16 修复：runSpecial 签名为 (s, a)，必须显式传入最新 state 与 action 对象
+            const s = clone(sim)
+            runSpecial(s, { type: 'resolveStrike', option })
+            setSim(s)  // 保存修改后的状态
+            // runSpecial 内部已调用 setToast(msg) 和 setPendingStrike(null)
+          }}
+        />
       </>
     )
   }
@@ -938,7 +948,7 @@ const clone = (s) => {
         setPendingSpecial(null)
         setToast(`🎯 ${result.message}`)
         persist(s, coId, diffId, chapterIdx, stepIdx, false)
-        nextStep()
+        nextStep(s)
       } else {
         setToast(`❌ ${result.message || '操作失败'}`)
       }
