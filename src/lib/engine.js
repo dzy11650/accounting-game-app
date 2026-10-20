@@ -383,7 +383,10 @@ export function createCompany(companyId, diffId = 'easy', projectId = null) {
     talentInsider: false, talentPeerBench: false, talentMicroWhite: false,
     infoLevel: 0,
     // —— 市场竞争机制（多公司竞争原型） ——
-    marketData: initMarketData(companyId, diffId),
+marketData: initMarketData(companyId, diffId),
+    // 研发树与损耗管理
+    rdProject: null, // 当前研发项目：{name, stage, invested, remaining, successRate, onSuccessType, onSuccessName, failHandled, level}
+    eventBuffer: {}, // 随机事件缓冲
   }
   return state
 }
@@ -757,6 +760,10 @@ export function monthEnd(state, opts = {}) {
 
   // 市场竞争：月度需求波动 + 份额历史记录
   rollMarketMonth(state)
+  // 处理研发项目进度
+  if (state.rdProject) {
+    processRdProject(state);
+  }
   // 每 3 个月（季度末）演进对手规模
   if (m % 3 === 0) evolveCompetitorsQuarterly(state)
   // 低份额触发事件（写入 pendingMarketEvent 供 UI 弹窗）
@@ -1103,8 +1110,97 @@ function buildCashFlow(state) {
   financing.net = +financing.items.reduce((s, i) => s + i.amount, 0).toFixed(2)
 
   const netIncrease = +(operating.net + investing.net + financing.net).toFixed(2)
+
   return { operating, investing, financing, netIncrease, openingCash, closingCash }
 }
+
+/**
+ * 开始研发项目
+ */
+export function startRdProject(state, level, cost, months, rate) {
+  if (state.rdProject) return { success: false, message: '已有研发进行中' };
+  
+  const entries = [
+    { side: 'debit', account: '研发支出-材料', amount: cost },
+    { side: 'credit', account: '银行存款', amount: cost },
+  ];
+  
+  state.rdProject = {
+    name: (level === 'small' ? '小' : level === 'medium' ? '中' : '大') + '试果茶',
+    stage: 'investing',
+    invested: cost,
+    remaining: months,
+    successRate: rate,
+    onSuccessType: 'intangible',
+    onSuccessName: '无形资产-配方',
+    failHandled: false,
+    level,
+  };
+  
+  applyBusiness(state, entries, '启动研发项目', state.month);
+  return { success: true, message: '研发启动：' + state.rdProject.name };
+}
+
+/**
+ * 月末处理研发进度
+ */
+export function processRdProject(state) {
+  if (!state.rdProject || state.rdProject.stage === 'failed') return;
+
+  // 等待期倒计时
+  state.rdProject.remaining -= 1;
+  
+  // 随机事件干扰 (10% 概率)
+  if (Math.random() < 0.1 && state.rdProject.stage === 'investing') {
+    const extraCost = +(Math.random() * 1).toFixed(1);
+    if (extraCost > 0) {
+      state.rdProject.invested += extraCost;
+      const entries = [
+        { side: 'debit', account: '研发支出-材料', amount: extraCost },
+        { side: 'credit', account: '银行存款', amount: extraCost },
+      ];
+      applyBusiness(state, entries, '研发意外成本', state.month);
+    }
+  }
+
+  // 到期判定
+  if (state.rdProject.remaining <= 0) {
+    const success = Math.random() < state.rdProject.successRate;
+    
+    if (success) {
+      state.rdProject.stage = 'success';
+      const assetName = state.rdProject.onSuccessName;
+      
+      const entries = [
+        { side: 'debit', account: assetName, amount: state.rdProject.invested },
+        { side: 'credit', account: '研发支出-材料', amount: state.rdProject.invested },
+      ];
+      applyBusiness(state, entries, '研发成功，转无形资产', state.month);
+      
+      // 提升毛利
+      state.co.economics.margin += (state.rdProject.level === 'large' ? 0.15 : 0.08);
+      if (state.rdProject.level === 'large') state.boost = (state.boost || 0) + 0.3;
+      
+      return { success: true, message: '研发成功！配方已录入，毛利提升。' };
+    } else {
+      // 失败：全额费用化
+      state.rdProject.stage = 'failed';
+      const entries = [
+        { side: 'debit', account: '管理费用-研发费用', amount: state.rdProject.invested },
+        { side: 'credit', account: '研发支出-材料', amount: state.rdProject.invested },
+      ];
+      applyBusiness(state, entries, '研发失败，费用化处理', state.month);
+      
+      state.rdProject.failHandled = true;
+      state.rdProject = null;
+      
+      return { success: true, message: '研发失败！投入全部计入当期管理费用。' };
+    }
+  } else if (state.rdProject.stage === 'investing') {
+    state.rdProject.stage = 'waiting';
+  }
+}
+
   return { balance, income, cashflow, marketPanel: buildMarketPanel(state) }
 }
 
