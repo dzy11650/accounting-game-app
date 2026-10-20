@@ -44,6 +44,7 @@ const NATURE = {
   // 金融专属科目：资产类借增贷减(true)，收入类贷增借减(false)，费用类借增贷减(true)
   贷款资产: true, 债权投资: true, 交易性金融资产: true,
   利息收入: false, 公允价值变动损益: false,
+  营业外收入: false, 营业外支出: true,
   手续费支出: true, 信用减值损失: true,
 }
 function natureOf(account) {
@@ -725,7 +726,7 @@ export function gradeEntries(actual, expected) {
 
 /**
  * 营业外收入/支出 月末结转：
- * 7d0e7f93 起「营业外收入-*/营业外支出-*」被 PNL_SUBJECTS_TO_RESET 无条件清零，
+ * 7d0e7f93 起「营业外收入」/「营业外支出」被 PNL_SUBJECTS_TO_RESET 无条件清零，
  * 但那批子科目从未接入 monthProfit 公式 —— 税收返补只进银行存款、罚款只扣银行存款、
  * 政策补贴只进银行存款，全都没进本年利润，资产变动与权益变动之间留下永久缺口。
  * 本函数在 clearPnLAccounts 之前，把全部营业外收支子科目余额结转入「本年利润」，
@@ -1139,6 +1140,10 @@ export function buildCashFlow(state) {
   financing.net = +financing.items.reduce((s, i) => s + i.amount, 0).toFixed(2)
 
   const netIncrease = +(operating.net + investing.net + financing.net).toFixed(2)
+  const _check = +(closingCash - openingCash).toFixed(2)
+  if (Math.abs(netIncrease - _check) > 0.01) {
+    console.warn('[buildCashFlow] netIncrease', netIncrease, '!= closingCash - openingCash', _check)
+  }
 
   return { operating, investing, financing, netIncrease, openingCash, closingCash }
 }
@@ -1436,13 +1441,13 @@ export function maybeEvilBlowup(state, month, rng = Math.random) {
     const fine = +(taxDue * 0.5).toFixed(2)
     // 修复：借「应交税费」销账，贷「银行存款」现金流出；罚款走「营业外支出-罚款」
     entries.push(...mk('应交税费', taxDue, '银行存款', taxDue, `税务稽查：追缴税款¥${taxDue}万`))
-    entries.push(...mk('营业外支出-罚款', fine, '银行存款', fine, `缴纳滞纳金罚款¥${fine}万`))
+    entries.push(...mk('营业外支出 - 罚款', fine, '银行存款', fine, `缴纳滞纳金罚款¥${fine}万`))
     events.push(`税务稽查：追缴税款¥${taxDue}万、罚款¥${fine}万`)
   }
   if (wageDue > 0) {
     const fine = +(wageDue * 0.5).toFixed(2)
     entries.push(...mk('应付职工薪酬', wageDue, '银行存款', wageDue, `劳动稽查：补发欠薪¥${wageDue}万`))
-    entries.push(...mk('营业外支出-赔偿', fine, '银行存款', fine, `赔偿¥${fine}万`))
+    entries.push(...mk('营业外支出 - 赔偿', fine, '银行存款', fine, `赔偿¥${fine}万`))
     events.push(`劳动稽查：补发欠薪¥${wageDue}万、赔偿¥${fine}万`)
   }
   if (entries.length) {
