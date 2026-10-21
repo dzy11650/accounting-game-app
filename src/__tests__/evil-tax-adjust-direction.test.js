@@ -43,11 +43,12 @@ function assertBalanced(s, label) {
   return { assets: a, liabEquity: le, gap }
 }
 
-test('#5 evilTaxAdjust 应交税费应下降且本年利润同幅下降', () => {
+test('#5 evilTaxAdjust 应交税费应下降且本年利润同幅上升（调减冲回费用）', () => {
   const s = createCompany('tech', 'easy')
   s.balances['应交税费-所得税'] = 50
   s.balances['本年利润'] = 100
   s.balances['银行存款'] = 300
+  s.balances['实收资本'] = 150
 
   const beforeTaxDue = sumAccount(s.balances, '应交税费')
   const beforeProfit = s.balances['本年利润']
@@ -62,8 +63,9 @@ test('#5 evilTaxAdjust 应交税费应下降且本年利润同幅下降', () => 
     `应交税费应减少 25 → before=${beforeTaxDue}, after=${afterTaxDue}`)
 
   // Fix2: 修复后贷记本年利润（而非"所得税费用"贷方余额累积）
-  assert.strictEqual(afterProfit, beforeProfit - 25,
-    `本年利润应减少 25（贷记）→ before=${beforeProfit}, after=${afterProfit}`)
+  // 调减应纳税额 = 冲回费用，利润应同幅上升（100→125）
+  assert.strictEqual(afterProfit, beforeProfit + 25,
+    `本年利润应增加 25（调减冲回费用）→ before=${beforeProfit}, after=${afterProfit}`)
 
   // Fix3: "所得税费用"不应出现贷方负数（保护清单内会累积）
   const taxExp = sumAccount(s.balances, '所得税费用')
@@ -76,6 +78,7 @@ test('#5 evilTaxAdjust 会计分录本身应平衡', () => {
   s.balances['应交税费-所得税'] = 50
   s.balances['本年利润'] = 100
   s.balances['银行存款'] = 300
+  s.balances['实收资本'] = 150
 
   evilTaxAdjust(s, 0.5)
   assertBalanced(s, '#5 evilTaxAdjust 后')
