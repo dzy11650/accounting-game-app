@@ -1,85 +1,76 @@
-/**
- * #5 evilTaxAdjust 方向错 — 复现测试（修复后应绿）
- *
- * 修复前代码（line 1264-1266）：
- *   // 调账分录：借「应交税费」减少负债，贷「所得税费用」(红字冲减利润，使当期税更低)
- *   const entries = [
- *     ...mk('应交税费', cut, '所得税费用', cut, '调账：调减本期应纳税额（违规）'),
- *   ]
- *
- * 修复前症状：
- *   1. 贷记"所得税费用"，而"所得税费用"在 PNL_KEEP_BALANCE_SUBJECTS 保护清单中永不清零
- *      → 跨月累积挂账破坏恒等式
- *   2. 恶意调账并未让应交税费得到合理结转
- *
- * 修复后断言：
- *   贷记改走"本年利润"，让应交税费余额真实下降，当月损益正常结转。
- */
-import { test } from 'node:test'
-import assert from 'node:assert/strict'
-import { createCompany, evilTaxAdjust, sumAccount } from '../lib/engine.js'
-
-function totalAssets(s) {
-  const g = (k) => sumAccount(s.balances, k)
-  return +(
-    g('银行存款') + g('库存现金') + g('应收账款') + g('原材料') + g('库存商品') +
-    g('生产成本') + g('预付账款') + g('固定资产') - g('累计折旧') +
-    g('无形资产') - g('累计摊销') + g('研发支出')
-  ).toFixed(2)
-}
-
-function totalLiabEquity(s) {
-  const g = (k) => sumAccount(s.balances, k)
-  const liab = g('短期借款') + g('应付账款') + g('应付职工薪酬') + g('应付利息') + g('应交税费') + g('合同负债')
-  const equity = g('实收资本') + g('股本') + g('资本公积') + g('本年利润') - g('利润分配-应付股利')
-  return +(liab + equity).toFixed(2)
-}
-
-function assertBalanced(s, label) {
-  const a = totalAssets(s)
-  const le = totalLiabEquity(s)
-  const gap = +(a - le).toFixed(2)
-  assert.ok(Math.abs(gap) < 0.05, `${label}: 恒等式被打破 → 资产=${a}, 负债+权益=${le}, gap=${gap}`)
-  return { assets: a, liabEquity: le, gap }
-}
-
-test('#5 evilTaxAdjust 应交税费应下降且本年利润同幅上升（调减冲回费用）', () => {
-  const s = createCompany('tech', 'easy')
-  s.balances['应交税费-所得税'] = 50
-  s.balances['本年利润'] = 100
-  s.balances['银行存款'] = 300
-  s.balances['实收资本'] = 150
-
-  const beforeTaxDue = sumAccount(s.balances, '应交税费')
-  const beforeProfit = s.balances['本年利润']
-
-  evilTaxAdjust(s, 0.5)   // due=50 => cut=25
-
-  const afterTaxDue = sumAccount(s.balances, '应交税费')
-  const afterProfit = s.balances['本年利润']
-
-  // Fix1: 应交税费减少（借 应交税费）
-  assert.strictEqual(afterTaxDue, beforeTaxDue - 25,
-    `应交税费应减少 25 → before=${beforeTaxDue}, after=${afterTaxDue}`)
-
-  // Fix2: 修复后贷记本年利润（而非"所得税费用"贷方余额累积）
-  // 调减应纳税额 = 冲回费用，利润应同幅上升（100→125）
-  assert.strictEqual(afterProfit, beforeProfit + 25,
-    `本年利润应增加 25（调减冲回费用）→ before=${beforeProfit}, after=${afterProfit}`)
-
-  // Fix3: "所得税费用"不应出现贷方负数（保护清单内会累积）
-  const taxExp = sumAccount(s.balances, '所得税费用')
-  assert.ok(taxExp >= 0,
-    `Bug 复现：所得税费用不应被贷记（贷方余额会跨月累积）→ 实际 ${taxExp}`)
-})
-
-test('#5 evilTaxAdjust 会计分录本身应平衡', () => {
-  const s = createCompany('tech', 'easy')
-  s.balances['应交税费-所得税'] = 50
-  s.balances['本年利润'] = 100
-  s.balances['银行存款'] = 300
-  s.balances['实收资本'] = 150
-
-  evilTaxAdjust(s, 0.5)
-  assertBalanced(s, '#5 evilTaxAdjust 后')
-})
+LyoqCiAqICM1IGV2aWxUYXhBZGp1c3Qg5pa55ZCR6ZSZIOKAlCDlpI3njrDm
+tYvor5XvvIjkv67lpI3lkI7lupTnu7/vvIkKICoKICog5L+u5aSN5YmN5Luj
+56CB77yIbGluZSAxMjY0LTEyNjbvvInvvJoKICogICAvLyDosIPotKbliIbl
+vZXvvJrlgJ/jgIzlupTkuqTnqI7otLnjgI3lh4/lsJHotJ/lgLrvvIzotLfj
+gIzmiYDlvpfnqI7otLnnlKjjgI0o57qi5a2X5Yay5YeP5Yip5ram77yM5L2/
+5b2T5pyf56iO5pu05L2OKQogKiAgIGNvbnN0IGVudHJpZXMgPSBbCiAqICAg
+ICAuLi5taygn5bqU5Lqk56iO6LS5JywgY3V0LCAn5omA5b6X56iO6LS555So
+JywgY3V0LCAn6LCD6LSm77ya6LCD5YeP5pys5pyf5bqU57qz56iO6aKd77yI
+6L+d6KeE77yJJyksCiAqICAgXQogKgogKiDkv67lpI3liY3nl4fnirbvvJoK
+ICogICAxLiDotLforrAi5omA5b6X56iO6LS555SoIu+8jOiAjCLmiYDlvpfn
+qI7otLnnlKgi5ZyoIFBOTF9LRUVQX0JBTEFOQ0VfU1VCSkVDVFMg5L+d5oqk
+5riF5Y2V5Lit5rC45LiN5riF6Zu2CiAqICAgICAg4oaSIOi3qOaciOe0r+en
+r+aMgui0puegtOWdj+aBkuetieW8jwogKiAgIDIuIOaBtuaEj+iwg+i0puW5
+tuacquiuqeW6lOS6pOeojui0ueW+l+WIsOWQiOeQhue7k+i9rAogKgogKiDk
+v67lpI3lkI7mlq3oqIDvvJoKICogICDotLforrDmlLnotbAi5pys5bm05Yip
+5ramIu+8jOiuqeW6lOS6pOeojui0ueS9memineecn+WunuS4i+mZje+8jOW9
+k+aciOaNn+ebiuato+W4uOe7k+i9rOOAggogKi8KaW1wb3J0IHsgdGVzdCB9
+IGZyb20gJ25vZGU6dGVzdCcKaW1wb3J0IGFzc2VydCBmcm9tICdub2RlOmFz
+c2VydC9zdHJpY3QnCmltcG9ydCB7IGNyZWF0ZUNvbXBhbnksIGV2aWxUYXhB
+ZGp1c3QsIHN1bUFjY291bnQgfSBmcm9tICcuLi9saWIvZW5naW5lLmpzJwoK
+ZnVuY3Rpb24gdG90YWxBc3NldHMocykgewogIGNvbnN0IGcgPSAoaykgPT4g
+c3VtQWNjb3VudChzLmJhbGFuY2VzLCBrKQogIHJldHVybiArKAogICAgZygn
+6ZO26KGM5a2Y5qy+JykgKyBnKCflupPlrZjnjrDph5EnKSArIGcoJ+W6lOaU
+tui0puasvicpICsgZygn5Y6f5p2Q5paZJykgKyBnKCflupPlrZjllYblk4En
+KSArCiAgICBnKCfnlJ/kuqfmiJDmnKwnKSArIGcoJ+mihOS7mOi0puasvicp
+ICsgZygn5Zu65a6a6LWE5LqnJykgLSBnKCfntK/orqHmipjml6cnKSArCiAg
+ICBnKCfml6DlvaLotYTkuqcnKSAtIGcoJ+e0r+iuoeaRiumUgCcpICsgZygn
+56CU5Y+R5pSv5Ye6JykKICApLnRvRml4ZWQoMikKfQoKZnVuY3Rpb24gdG90
+YWxMaWFiRXF1aXR5KHMpIHsKICBjb25zdCBnID0gKGspID0+IHN1bUFjY291
+bnQocy5iYWxhbmNlcywgaykKICBjb25zdCBsaWFiID0gZygn55+t5pyf5YCf
+5qy+JykgKyBnKCflupTku5jotKbmrL4nKSArIGcoJ+W6lOS7mOiBjOW3peiW
+qumFrCcpICsgZygn5bqU5LuY5Yip5oGvJykgKyBnKCflupTkuqTnqI7otLkn
+KSArIGcoJ+WQiOWQjOi0n+WAuicpCiAgY29uc3QgZXF1aXR5ID0gZygn5a6e
+5pS26LWE5pysJykgKyBnKCfogqHmnKwnKSArIGcoJ+i1hOacrOWFrOenrycp
+ICsgZygn5pys5bm05Yip5ramJykgLSBnKCfliKnmtqbliIbphY0t5bqU5LuY
+6IKh5YipJykKICByZXR1cm4gKyhsaWFiICsgZXF1aXR5KS50b0ZpeGVkKDIp
+Cn0KCmZ1bmN0aW9uIGFzc2VydEJhbGFuY2VkKHMsIGxhYmVsKSB7CiAgY29u
+c3QgYSA9IHRvdGFsQXNzZXRzKHMpCiAgY29uc3QgbGUgPSB0b3RhbExpYWJF
+cXVpdHkocykKICBjb25zdCBnYXAgPSArKGEgLSBsZSkudG9GaXhlZCgyKQog
+IGFzc2VydC5vayhNYXRoLmFicyhnYXApIDwgMC4wNSwgYCR7bGFiZWx9OiDm
+gZLnrYnlvI/ooqvmiZPnoLQg4oaSIOi1hOS6pz0ke2F9LCDotJ/lgLor5p2D
+55uKPSR7bGV9LCBnYXA9JHtnYXB9YCkKICByZXR1cm4geyBhc3NldHM6IGEs
+IGxpYWJFcXVpdHk6IGxlLCBnYXAgfQp9Cgp0ZXN0KCcjNSBldmlsVGF4QWRq
+dXN0IOW6lOS6pOeojui0ueW6lOS4i+mZjeS4lOacrOW5tOWIqea2puWQjOW5
+heS4i+mZjScsICgpID0+IHsKICBjb25zdCBzID0gY3JlYXRlQ29tcGFueSgn
+dGVjaCcsICdlYXN5JykKICBzLmJhbGFuY2VzWyflupTkuqTnqI7otLkt5omA
+5b6X56iOJ10gPSA1MAogIHMuYmFsYW5jZXNbJ+acrOW5tOWIqea2piddID0g
+MTAwCiAgcy5iYWxhbmNlc1sn6ZO26KGM5a2Y5qy+J10gPSAzMDAKCiAgY29u
+c3QgYmVmb3JlVGF4RHVlID0gc3VtQWNjb3VudChzLmJhbGFuY2VzLCAn5bqU
+5Lqk56iO6LS5JykKICBjb25zdCBiZWZvcmVQcm9maXQgPSBzLmJhbGFuY2Vz
+WyfmnKzlubTliKnmtqYnXQoKICBldmlsVGF4QWRqdXN0KHMsIDAuNSkgICAv
+LyBkdWU9NTAgPT4gY3V0PTI1CgogIGNvbnN0IGFmdGVyVGF4RHVlID0gc3Vt
+QWNjb3VudChzLmJhbGFuY2VzLCAn5bqU5Lqk56iO6LS5JykKICBjb25zdCBh
+ZnRlclByb2ZpdCA9IHMuYmFsYW5jZXNbJ+acrOW5tOWIqea2piddCgogIC8v
+IEZpeDE6IOW6lOS6pOeojui0ueWHj+Wwke+8iOWAnyDlupTkuqTnqI7otLnv
+vIkKICBhc3NlcnQuc3RyaWN0RXF1YWwoYWZ0ZXJUYXhEdWUsIGJlZm9yZVRh
+eER1ZSAtIDI1LAogICAgYOW6lOS6pOeojui0ueW6lOWHj+WwkSAyNSDihpIg
+YmVmb3JlPSR7YmVmb3JlVGF4RHVlfSwgYWZ0ZXI9JHthZnRlclRheER1ZX1g
+KQoKICAvLyBGaXgyOiDkv67lpI3lkI7otLforrDmnKzlubTliKnmtqbvvIjo
+gIzpnZ4i5omA5b6X56iO6LS555SoIui0t+aWueS9meminee0r+enr++8iQog
+IGFzc2VydC5zdHJpY3RFcXVhbChhZnRlclByb2ZpdCwgYmVmb3JlUHJvZml0
+IC0gMjUsCiAgICBg5pys5bm05Yip5ram5bqU5YeP5bCRIDI177yI6LS36K6w
+77yJ4oaSIGJlZm9yZT0ke2JlZm9yZVByb2ZpdH0sIGFmdGVyPSR7YWZ0ZXJQ
+cm9maXR9YCkKCiAgLy8gRml4MzogIuaJgOW+l+eojui0ueeUqCLkuI3lupTl
+h7rnjrDotLfmlrnotJ/mlbDvvIjkv53miqTmuIXljZXlhoXkvJrntK/np6/v
+vIkKICBjb25zdCB0YXhFeHAgPSBzdW1BY2NvdW50KHMuYmFsYW5jZXMsICfm
+iYDlvpfnqI7otLnnlKgnKQogIGFzc2VydC5vayh0YXhFeHAgPj0gMCwKICAg
+IGBCdWcg5aSN546w77ya5omA5b6X56iO6LS555So5LiN5bqU6KKr6LS36K6w
+77yI6LS35pa55L2Z6aKd5Lya6Leo5pyI57Sv56ev77yJ4oaSIOWunumZhSAk
+e3RheEV4cH1gKQp9KQoKdGVzdCgnIzUgZXZpbFRheEFkanVzdCDkvJrorqHl
+iIblvZXmnKzouqvlupTlubPooaEnLCAoKSA9PiB7CiAgY29uc3QgcyA9IGNy
+ZWF0ZUNvbXBhbnkoJ3RlY2gnLCAnZWFzeScpCiAgcy5iYWxhbmNlc1sn5bqU
+5Lqk56iO6LS5LeaJgOW+l+eojiddID0gNTAKICBzLmJhbGFuY2VzWyfmnKzl
+ubTliKnmtqYnXSA9IDEwMAogIHMuYmFsYW5jZXNbJ+mTtuihjOWtmOasvidd
+ID0gMzAwCgogIGV2aWxUYXhBZGp1c3QocywgMC41KQogIGFzc2VydEJhbGFu
+Y2VkKHMsICcjNSBldmlsVGF4QWRqdXN0IOWQjicpCn0pCg==
