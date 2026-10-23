@@ -42,7 +42,7 @@ function assertBalanced(s, label) {
   return { assets: a, liabEquity: le, gap }
 }
 
-test('#6 税收返补应使现金（银行存款）流入，而非挂账负债', () => {
+test('#6 税收返补应计入营业外收入，现金被同笔CIT缴纳抵消', () => {
   const s = createCompany('tech', 'easy')
   s.taxRebate = 0.1
   s.taxType = 'general'
@@ -51,13 +51,17 @@ test('#6 税收返补应使现金（银行存款）流入，而非挂账负债',
   s.vatOutput = 0
   s.vatInput = 0
 
-  const cashBefore = s.balances['银行存款']
+  const bankBefore = s.balances['银行存款']
+  const rebateBefore = sumAccount(s.balances, '营业外收入-税收返补')
   settleTax(s, [])
-  const cashAfter = s.balances['银行存款']
+  const bankAfter = s.balances['银行存款']
+  const rebateAfter = sumAccount(s.balances, '营业外收入-税收返补')
 
-  // Fix: cash must increase by rebate amount
-  assert.ok(cashAfter > cashBefore,
-    `Bug 复现：税收返补应使现金流入 → before=${cashBefore}, after=${cashAfter}`)
+  // 会计真实：rebate 进入营业外收入（+0.5），CIT 缴纳银行存款减少（-5）
+  assert.strictEqual(rebateAfter, rebateBefore + 0.5,
+    `Bug 复现：营业外收入-税收返补应增加 0.5 → before=${rebateBefore}, after=${rebateAfter}`)
+  assert.strictEqual(bankAfter, bankBefore - 5 + 0.5,
+    `现金净变动应 = -CIT(5) + rebate(0.5) = -4.5 → before=${bankBefore}, after=${bankAfter}`)
 })
 
 test('#6 税收返补不应增加应交税费负债', () => {
