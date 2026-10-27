@@ -30,9 +30,9 @@ function totalLiabEquity(s) {
   const g = (k) => sumAccount(s.balances, k)
   const liab = g('短期借款') + g('应付账款') + g('应付职工薪酬') + g('应付利息') + g('应交税费') + g('合同负债')
   // 会计真实：费用/损失类科目在结转前以负权益形态存在，恒等式需扣减
-  // 键名与引擎 maybeEvilBlowup L1444/L1450 一致（含空格）
+  // 键名与引擎 maybeEvilBlowup L1444/L1450 一致（无空格）
   const equity = g('实收资本') + g('股本') + g('资本公积') + g('本年利润') - g('利润分配-应付股利')
-    - g('营业外支出 - 罚款') - g('营业外支出 - 赔偿')
+    - g('营业外支出-罚款') - g('营业外支出-赔偿')
   return +(liab + equity).toFixed(2)
 }
 
@@ -63,7 +63,7 @@ test('#3 爆雷追缴税款应真实销账，应交税费-所得税必须减少'
     `Bug 复现：爆雷追缴税款应交税费应减少 → before=${beforeTax}, after=${afterTax}`)
 })
 
-test('#3 爆雷罚款应计入营业外支出 - 罚款，而非管理费用', () => {
+test('#3 爆雷罚款应计入营业外支出-罚款，而非管理费用', () => {
   const s = createCompany('shop', 'easy')
   s.balances['银行存款'] = 500
   s.balances['应交税费-所得税'] = 50
@@ -74,10 +74,10 @@ test('#3 爆雷罚款应计入营业外支出 - 罚款，而非管理费用', ()
   const msg = maybeEvilBlowup(s, 12, () => 0)
   if (msg === null) { console.log('SKIP: random no blowup'); return }
 
-  // Fix: fine should be in "营业外支出 - 罚款", not "管理费用"
-  const fineExpense = sumAccount(s.balances, '营业外支出 - 罚款')
+  // Fix: fine should be in "营业外支出-罚款", not "管理费用"
+  const fineExpense = sumAccount(s.balances, '营业外支出-罚款')
   assert.ok(fineExpense > 0,
-    'Bug 复现：罚款应计入营业外支出 - 罚款，实际 0')
+    'Bug 复现：罚款应计入营业外支出-罚款，实际 0')
 })
 
 test('#3 爆雷分录恒等式应保持平衡', () => {
