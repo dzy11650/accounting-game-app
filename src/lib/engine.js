@@ -1441,13 +1441,13 @@ export function maybeEvilBlowup(state, month, rng = Math.random) {
     const fine = +(taxDue * 0.5).toFixed(2)
     // 修复：借「应交税费」销账，贷「银行存款」现金流出；罚款走「营业外支出-罚款」
     entries.push(...mk('应交税费', taxDue, '银行存款', taxDue, `税务稽查：追缴税款¥${taxDue}万`))
-    entries.push(...mk('营业外支出 - 罚款', fine, '银行存款', fine, `缴纳滞纳金罚款¥${fine}万`))
+    entries.push(...mk('营业外支出-罚款', fine, '银行存款', fine, `缴纳滞纳金罚款¥${fine}万`))
     events.push(`税务稽查：追缴税款¥${taxDue}万、罚款¥${fine}万`)
   }
   if (wageDue > 0) {
     const fine = +(wageDue * 0.5).toFixed(2)
     entries.push(...mk('应付职工薪酬', wageDue, '银行存款', wageDue, `劳动稽查：补发欠薪¥${wageDue}万`))
-    entries.push(...mk('营业外支出 - 赔偿', fine, '银行存款', fine, `赔偿¥${fine}万`))
+    entries.push(...mk('营业外支出-赔偿', fine, '银行存款', fine, `赔偿¥${fine}万`))
     events.push(`劳动稽查：补发欠薪¥${wageDue}万、赔偿¥${fine}万`)
   }
   if (entries.length) {
