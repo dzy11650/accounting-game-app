@@ -1398,7 +1398,7 @@ export function taxAudit(state, month) {
     const back = +state.taxAdjustAmount.toFixed(2)
     const fineRate = (state.fineMult != null ? state.fineMult : 0.5) * (state.auditFineMult || 1)
     const fine = +(back * fineRate).toFixed(2)
-    entries.push(...mk('所得税费用', back, '应交税费', back, `税务稽查：调账不实，补回税款¥${back}万`))
+    entries.push(...mk('营业外支出-补税', back, '应交税费', back, `税务稽查：调账不实，补回税款¥${back}万`))
     entries.push(...mk('所得税费用', fine, '银行存款', fine, `税务稽查罚款¥${fine}万`))
     events.push(`调账被查：补回税款¥${back}万、罚款¥${fine}万`)
     state.taxAdjustAmount = 0 // 已补回，累计虚减额清零
@@ -1702,7 +1702,7 @@ export const RANDOM_EVENTS = [
   {
     id: 'taxRemit', title: '退税到账', emoji: '🏦', tone: 'good',
     desc: '上年度汇算清缴多缴税款退回，现金 +¥0.8万。',
-    effect: (s) => { applyBusiness(s, mk('银行存款', 0.8, '应交税费-退税', 0.8, '退税到账'), s.month) },
+    effect: (s) => { applyBusiness(s, mk('银行存款', 0.8, '营业外收入-退税', 0.8, '退税到账'), s.month) },
   },
 ]
 
